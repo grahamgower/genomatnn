@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import sys
 import os.path
 import random
 import argparse
@@ -115,7 +116,7 @@ def homsap_papuans_DFE(model, contig, samples, seed, verbosity, **kwargs):
 
 def homsap_papuans_AI_Den_to_Papuan(
         model, contig, samples, seed, verbosity,
-        dfe=False, Den="Den1", slim_script=False,
+        dfe=False, Den="Den1", slim_script=False, min_allele_frequency=0.1,
         **kwargs):
     rng = random.Random(seed)
 
@@ -185,7 +186,7 @@ def homsap_papuans_AI_Den_to_Papuan(
         stdpopsim.ext.ConditionOnAlleleFrequency(
                 start_time=0, end_time=0,
                 mutation_type_id=mut_id, population_id=pop["Papuan"],
-                op=">", allele_frequency=0.1),
+                op=">", allele_frequency=min_allele_frequency),
         ]
 
     engine = stdpopsim.get_engine("slim")
@@ -206,7 +207,8 @@ def homsap_papuans_AI_Den_to_Papuan(
 
 
 def homsap_papuans_Sweep_Papuan(
-        model, contig, samples, seed, verbosity, dfe=False, slim_script=False,
+        model, contig, samples, seed, verbosity,
+        dfe=False, slim_script=False, min_allele_frequency=0.1,
         **kwargs):
     rng = random.Random(seed)
 
@@ -247,7 +249,7 @@ def homsap_papuans_Sweep_Papuan(
         stdpopsim.ext.ConditionOnAlleleFrequency(
                 start_time=0, end_time=0,
                 mutation_type_id=mut_id, population_id=pop["Papuan"],
-                op=">", allele_frequency=0.1),
+                op=">", allele_frequency=min_allele_frequency),
         ]
 
     engine = stdpopsim.get_engine("slim")
@@ -310,6 +312,30 @@ def parse_args():
     prefixes = "\n".join(toai_simulations.keys())
 
     parser = argparse.ArgumentParser(description="Run a simulation.")
+
+    def allele_frequency(arg, parser=parser):
+        try:
+            arg = float(arg)
+            if arg < 0 or arg > 1:
+                raise ValueError
+        except ValueError:
+            parser.error("Allele frequency must be between 0 and 1.")
+        return arg
+
+    def length(arg, parser=parser):
+        x = 1
+        if arg[-1] == "k":
+            x = 1000
+            arg = arg[:-1]
+        elif arg[-1] == "m":
+            x = 1000 * 1000
+            arg = arg[:-1]
+        try:
+            arg = int(arg)
+        except ValueError:
+            parser.error("Length must be an integer, with optional suffix 'k' or 'm'.")
+        return x * arg
+
     parser.add_argument(
             "-v", "--verbose", default=False, action="store_true",
             help="Show verbose output from SLiM script.")
@@ -320,11 +346,19 @@ def parse_args():
             "-o", "--output-dir", default=".",
             help="Output directory for the tree sequence files.")
     parser.add_argument(
-            "-l", "--length", default=100*1000, type=int,
-            help="Length of the genomic region to simulate. [default=%(default)s]")
+            "-l", "--length", default="100k", type=length,
+            help="Length of the genomic region to simulate. The suffixes 'k' "
+                 "and 'm' are recognised to mean 1,000 or 1,000,000 bases "
+                 "respectively [default=%(default)s]")
     parser.add_argument(
             "--slim-script", default=False, action="store_true",
-            help="Print SLiM script to stdout. Don't run the simulation.")
+            help="Print SLiM script to stdout. The simulation is not run.")
+    parser.add_argument(
+            "-a", "--min-allele-frequency", metavar="AF", default=0.1,
+            type=allele_frequency,
+            help="Condition on the final allele frequency of the selected "
+                 "mutation being >AF in the target popuation. "
+                 "[default=%(default)s]")
     parser.add_argument(
             "modelspec",
             help="Model specification. This is either a full model "
@@ -382,6 +416,8 @@ if __name__ == "__main__":
     assert sample_counts is not None
     del kwargs["sample_counts"]
 
+    kwargs["min_allele_frequency"] = args.min_allele_frequency
+
     species, model, contig, samples = demographic_model_func(
             args.length, sample_counts)
 
@@ -396,6 +432,7 @@ if __name__ == "__main__":
     ts = stdpopsim.ext.dedup_slim_provenances(ts)
 
     save_info = dict(
+            command=" ".join(sys.argv[1:]),
             seed=seed, modelspec=modelspec, origin=origin,
             T_mut=T_mut, T_sel=T_sel, s=s)
     if len(kwargs) > 0:
