@@ -3,6 +3,7 @@ import os.path
 import random
 import argparse
 import collections
+import functools
 
 import attr
 import stdpopsim
@@ -15,7 +16,8 @@ __version__ = "0.1"
 @attr.s(frozen=True, kw_only=True)
 class MyContig(stdpopsim.Contig):
     """
-    Extend stdpopsim.Contig with an origin attribute. The attribute cannot be
+    Extend stdpopsim.Contig with an origin attribute that records the chromosome
+    and position from whence the contig was obtained. The attribute cannot be
     set on a regular stdpopsim.Contig() instance, becase the class is frozen.
     """
     origin = attr.ib(default=None, type=str)
@@ -111,10 +113,14 @@ def homsap_papuans_DFE(model, contig, samples, seed, verbosity, **kwargs):
     return ts, (contig.origin, 0, 0, 0)
 
 
-def homsap_papuans_AI_Den1_to_Papuan(
-        model, contig, samples, seed, verbosity, dfe=False, slim_script=False,
+def homsap_papuans_AI_Den_to_Papuan(
+        model, contig, samples, seed, verbosity,
+        dfe=False, Den="Den1", slim_script=False,
         **kwargs):
     rng = random.Random(seed)
+
+    if Den not in ("Den1", "Den2"):
+        raise ValueError("Source population Den must be either Den1 or Den2.")
 
     mutation_types = []
     if dfe:
@@ -126,13 +132,16 @@ def homsap_papuans_AI_Den1_to_Papuan(
     # TODO: get these from the model itself
     T_Den_Nea_split = 15090
     T_DenA_Den1_split = 9750
-    # T_DenA_Den2_split = 12500
+    T_DenA_Den2_split = 12500
     T_Den1_Papuan_mig = 29.8e3 / model.generation_time
-    # T_Den2_Papuan_mig = 45.7e3 / model.generation_time
+    T_Den2_Papuan_mig = 45.7e3 / model.generation_time
 
-    # should flip a coin to choose Den1 or Den2.
-    T_Den_split = T_DenA_Den1_split
-    T_mig = T_Den1_Papuan_mig
+    if Den == "Den1":
+        T_Den_split = T_DenA_Den1_split
+        T_mig = T_Den1_Papuan_mig
+    else:
+        T_Den_split = T_DenA_Den2_split
+        T_mig = T_Den2_Papuan_mig
 
     T_mut = rng.uniform(T_Den_split, T_Den_Nea_split)
     T_sel = rng.uniform(1e3 / model.generation_time, T_mig)
@@ -163,7 +172,7 @@ def homsap_papuans_AI_Den1_to_Papuan(
         stdpopsim.ext.ConditionOnAlleleFrequency(
                 start_time=stdpopsim.ext.GenerationAfter(T_Den_split),
                 end_time=T_mig,
-                mutation_type_id=mut_id, population_id=pop["Den1"],
+                mutation_type_id=mut_id, population_id=pop[Den],
                 op=">", allele_frequency=0,
                 # Update save point at start_time.
                 save=True),
@@ -269,7 +278,10 @@ toai_simulations = {
         # Various mutation models to stack on top of the demographic model.
         "Neutral": homsap_papuans_Neutral,
         "DFE": homsap_papuans_DFE,
-        "AI/Den1_to_Papuan": homsap_papuans_AI_Den1_to_Papuan,
+        "AI/Den1_to_Papuan":
+            functools.partial(homsap_papuans_AI_Den_to_Papuan, Den="Den1"),
+        "AI/Den2_to_Papuan":
+            functools.partial(homsap_papuans_AI_Den_to_Papuan, Den="Den2"),
         "Sweep/Papuan": homsap_papuans_Sweep_Papuan,
         },
 }
