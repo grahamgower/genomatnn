@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
-import sys
 import os.path
 import random
+import argparse
+import collections
 
 import attr
 import stdpopsim
@@ -81,27 +82,22 @@ def random_autosomal_chunk(species, genetic_map, length):
     return contig
 
 
-def homsap_papuans_model(length):
+def homsap_papuans_model(length, sample_counts):
     species = stdpopsim.get_species("HomSap")
     model = species.get_demographic_model("PapuansOutOfAfrica_10J19")
     contig = random_autosomal_chunk(species, "HapMapII_GRCh37", length)
-
-    sample_counts = {"YRI": 200, "Papuan": 200, "DenA": 2, "NeaA": 2}
     samples = model.get_samples(
         *[sample_counts.get(p.id, 0) for p in model.populations])
-
     return species, model, contig, samples
 
 
-def homsap_papuans_Neutral(seed, verbosity, length):
-    species, model, contig, samples = homsap_papuans_model(length)
+def homsap_papuans_Neutral(model, contig, samples, seed, verbosity, **kwargs):
     engine = stdpopsim.get_engine("msprime")
     ts = engine.simulate(model, contig, samples, seed=seed)
     return ts, (contig.origin, 0, 0, 0)
 
 
-def homsap_papuans_DFE(seed, verbosity, length):
-    species, model, contig, samples = homsap_papuans_model(length)
+def homsap_papuans_DFE(model, contig, samples, seed, verbosity, **kwargs):
     mutation_types = stdpopsim.ext.KimDFE()
     engine = stdpopsim.get_engine("slim")
     ts = engine.simulate(
@@ -115,11 +111,14 @@ def homsap_papuans_DFE(seed, verbosity, length):
     return ts, (contig.origin, 0, 0, 0)
 
 
-def homsap_papuans_AI_Den1_to_Papuan(seed, verbosity, length):
+def homsap_papuans_AI_Den1_to_Papuan(
+        model, contig, samples, seed, verbosity, dfe=False, slim_script=False,
+        **kwargs):
     rng = random.Random(seed)
-    species, model, contig, samples = homsap_papuans_model(length)
 
-    mutation_types = stdpopsim.ext.KimDFE()
+    mutation_types = []
+    if dfe:
+        mutation_types.extend(stdpopsim.ext.KimDFE())
     positive = stdpopsim.ext.MutationType(convert_to_substitution=False)
     mutation_types.append(positive)
     mut_id = len(mutation_types)
@@ -187,8 +186,8 @@ def homsap_papuans_AI_Den1_to_Papuan(seed, verbosity, length):
             verbosity=verbosity,
             mutation_types=mutation_types,
             extended_events=extended_events,
-            # slim_script=True,
-            slim_no_recapitation=True,
+            slim_script=slim_script,
+            slim_no_recapitation=dfe,
             # slim_no_burnin=True,
             )
 
@@ -197,10 +196,14 @@ def homsap_papuans_AI_Den1_to_Papuan(seed, verbosity, length):
             T_sel*model.generation_time, s)
 
 
-def homsap_papuans_Sweep_Papuan(seed, verbosity, length):
+def homsap_papuans_Sweep_Papuan(
+        model, contig, samples, seed, verbosity, dfe=False, slim_script=False,
+        **kwargs):
     rng = random.Random(seed)
-    species, model, contig, samples = homsap_papuans_model(length)
 
+    mutation_types = []
+    if dfe:
+        mutation_types.extend(stdpopsim.ext.KimDFE())
     mutation_types = stdpopsim.ext.KimDFE()
     positive = stdpopsim.ext.MutationType(convert_to_substitution=False)
     mutation_types.append(positive)
@@ -245,8 +248,8 @@ def homsap_papuans_Sweep_Papuan(seed, verbosity, length):
             verbosity=verbosity,
             mutation_types=mutation_types,
             extended_events=extended_events,
-            # slim_script=True,
-            slim_no_recapitation=True,
+            slim_script=slim_script,
+            slim_no_recapitation=dfe,
             # slim_no_burnin=True,
             )
 
@@ -257,21 +260,47 @@ def homsap_papuans_Sweep_Papuan(seed, verbosity, length):
 
 toai_simulations = {
     "HomSap/PapuansOutOfAfrica_10J19": {
+        # Model kwargs come first and must be prefixed with an underscore.
+        "_sample_counts": {"YRI": 200, "Papuan": 200, "DenA": 2, "NeaA": 2},
+
+        # Base demographic model.
+        "demographic_model": homsap_papuans_model,
+
+        # Various mutation models to stack on top of the demographic model.
         "Neutral": homsap_papuans_Neutral,
         "DFE": homsap_papuans_DFE,
         "AI/Den1_to_Papuan": homsap_papuans_AI_Den1_to_Papuan,
         "Sweep/Papuan": homsap_papuans_Sweep_Papuan,
         },
 }
-toai_models = list(toai_simulations.keys())
+
+
+def toai_models(mdict=toai_simulations):
+    models = {}
+    kwargs = {}
+    for key, val in mdict.items():
+        if key[0] == '_':
+            key = key[1:]
+            kwargs[key] = val
+        elif key == "demographic_model":
+            kwargs[key] = val
+        elif callable(val):
+            models[key] = (val, kwargs)
+        else:
+            children = (
+                    (f"{key}/{m}", (f, kw))
+                    for m, (f, kw) in toai_models(val).items())
+            models.update(children)
+    return models
 
 
 def parse_args():
-    import argparse
+    prefixes = "\n".join(toai_simulations.keys())
+
     parser = argparse.ArgumentParser(description="Run a simulation.")
     parser.add_argument(
             "-v", "--verbose", default=False, action="store_true",
-            help="Show debug output from SLiM script.")
+            help="Show verbose output from SLiM script.")
     parser.add_argument(
             "-s", "--seed", type=int, default=None,
             help="Seed for the random number generator.")
@@ -282,25 +311,36 @@ def parse_args():
             "-l", "--length", default=100*1000, type=int,
             help="Length of the genomic region to simulate. [default=%(default)s]")
     parser.add_argument(
-            "model", choices=list(toai_simulations.keys()), metavar="model",
-            help="Demographic model to simulate. "
-                 f"One of {list(toai_simulations.keys())}")
+            "--slim-script", default=False, action="store_true",
+            help="Print SLiM script to stdout. Don't run the simulation.")
     parser.add_argument(
-            "scenario",
-            help="The scenario (mutation model) to simulate. Use the special "
-                 "value `list` to print a list of the available scenarios for "
-                 "a given model")
+            "modelspec",
+            help="Model specification. This is either a full model "
+                 "specification, or a prefix. If a prefix is used, all model "
+                 "specifications with that prefix are printed. "
+                 "Available modelspec prefixes:\n"
+                 f"{prefixes}")
     args = parser.parse_args()
 
-    mdict = toai_simulations.get(args.model)
-    assert mdict is not None
-
-    if args.scenario == "list":
-        print(*mdict.keys(), sep="\n")
-        exit(0)
-    elif args.scenario not in mdict:
-        parser.error(f"Scenario `{args.scenario}` not recognised for {args.model}.")
-        exit(1)
+    models = toai_models()
+    for model, (func, kwargs) in models.items():
+        if args.modelspec == model:
+            args.modelspec = model, (func, kwargs)
+            break
+    else:
+        found = False
+        for model, (func, kwargs) in models.items():
+            if model.startswith(args.modelspec):
+                found = True
+                print(model)
+                for kw, arg in kwargs.items():
+                    if callable(arg):
+                        continue
+                    print(f"\t\t{kw}: {arg}")
+        if found:
+            exit(1)
+        else:
+            parser.error(f"No models matching spec `{args.modelspec}`.")
 
     args.verbosity = 0
     if args.verbose:
@@ -313,22 +353,47 @@ def parse_args():
 if __name__ == "__main__":
     args = parse_args()
     if args.seed is not None:
-        seed = int(sys.argv[1])
+        seed = args.seed
     else:
         random.seed()
         seed = random.randrange(1, 2**32)
 
-    mdict = toai_simulations.get(args.model)
-    assert mdict is not None, f"unrecognised model `{args.model}`"
-    func = mdict.get(args.scenario)
-    assert func is not None, f"unrecognised scenario `{args.scenario}` for {args.model}"
-
-    odir = f"{args.output_dir}/{args.model}/{args.scenario}"
+    modelspec, (sim_func, kwargs) = args.modelspec
+    odir = f"{args.output_dir}/{modelspec}"
     os.makedirs(odir, exist_ok=True)
 
-    ts, (origin, T_mut, T_sel, s) = func(seed, args.verbosity, args.length)
-    ts = stdpopsim.ext.save_ext(
-            ts, "toai", __version__,
-            seed=seed, scenario=args.scenario, model=args.model, origin=origin,
+    demographic_model_func = kwargs.get("demographic_model")
+    assert demographic_model_func is not None
+    del kwargs["demographic_model"]
+
+    sample_counts = kwargs.get("sample_counts")
+    assert sample_counts is not None
+    del kwargs["sample_counts"]
+
+    species, model, contig, samples = demographic_model_func(
+            args.length, sample_counts)
+
+    ts, (origin, T_mut, T_sel, s) = sim_func(
+            model, contig, samples, seed, args.verbosity,
+            slim_script=args.slim_script, **kwargs)
+
+    if ts is None:
+        assert args.slim_script, "ts is None, but no --slim-script requested"
+        exit(0)
+
+    ts = stdpopsim.ext.dedup_slim_provenances(ts)
+
+    save_info = dict(
+            seed=seed, modelspec=modelspec, origin=origin,
             T_mut=T_mut, T_sel=T_sel, s=s)
+    if len(kwargs) > 0:
+        save_info["extra_kwargs"] = kwargs
+
+    ts = stdpopsim.ext.save_ext(ts, "toai", __version__, **save_info)
+
+    popid = {i: p.id for i, p in enumerate(model.populations)}
+    observed_counts = collections.Counter(
+            [popid[ts.get_population(i)] for i in ts.samples()])
+    assert observed_counts == sample_counts, f"{observed_counts} != {sample_counts}"
+
     ts.dump(f"{odir}/{seed}.trees")
