@@ -3,17 +3,93 @@ import sys
 import os.path
 import random
 
+import attr
 import stdpopsim
+import msprime
 
 
 __version__ = "0.1"
 
 
+@attr.s(frozen=True, kw_only=True)
+class MyContig(stdpopsim.Contig):
+    """
+    Extend stdpopsim.Contig with an origin attribute. The attribute cannot be
+    set on a regular stdpopsim.Contig() instance, becase the class is frozen.
+    """
+    origin = attr.ib(default=None, type=str)
+
+
+def simple_chrom_name(chrom):
+    if chrom is None:
+        return chrom
+    if chrom.startswith("chr"):
+        chrom = chrom[3:]
+    return chrom.lower()
+
+
+def random_autosomal_chunk(species, genetic_map, length):
+    """
+    Returns a `length` sized recombination map from the given `species`' `genetic_map`.
+
+    The chromosome is drawn from available autosomes in proportion to their
+    length. The position is drawn uniformly from the autosome, excluding any
+    flanking regions with zero recombination rate (telomeres).
+    """
+
+    if not hasattr(msprime.RecombinationMap, "slice"):
+        raise RuntimeError("recombination map slicing requires msprime >= 1.0")
+
+    chromosomes = species.genome.chromosomes
+    w = []
+    for i, ch in enumerate(chromosomes):
+        wl = 0
+        if ch.length >= length and simple_chrom_name(ch.id) not in ("x", "y", "m"):
+            wl = ch.length
+        w.append(wl if i == 0 else wl + w[i-1])
+    if w[-1] == 0:
+        raise ValueError(f"No chromosomes long enough for length {length}.")
+    chrom = random.choices(chromosomes, cum_weights=w)[0]
+
+    gm = species.get_genetic_map(genetic_map)
+    recomb_map = gm.get_chromosome_map(chrom.id)
+    positions = recomb_map.get_positions()
+    rates = recomb_map.get_rates()
+
+    # Get indices for the start and end of the recombination map.
+    j = 0
+    while j < len(rates) and rates[j] == 0:
+        j += 1
+    k = len(positions) - 1
+    while k > 1 and rates[k-1] == 0:
+        k -= 1
+
+    assert j <= k
+    if positions[k] - positions[j] < length:
+        # TODO: should really check this when we enumerate chromosomes
+        raise ValueError(
+                f"{chrom.id} was sampled, but its recombination map is "
+                f"shorter than {length}.")
+
+    pos = random.randrange(positions[j], positions[k] - length)
+    new_map = recomb_map[pos:pos+length]  # requires msprime >= 1.0
+    origin = f"{chrom.id}:{pos}-{pos+length}"
+    contig = MyContig(
+            recombination_map=new_map, mutation_rate=chrom.mutation_rate,
+            genetic_map=gm, origin=origin)
+
+    return contig
+
+
 def homsap_papuans_model(length):
     species = stdpopsim.get_species("HomSap")
     model = species.get_demographic_model("PapuansOutOfAfrica_10J19")
-    contig = species.get_chunk(length=length)  # , genetic_map="HapMapII_GRCh37")
-    samples = model.get_samples(200, 0,  0, 200, 2, 2)
+    contig = random_autosomal_chunk(species, "HapMapII_GRCh37", length)
+
+    sample_counts = {"YRI": 200, "Papuan": 200, "DenA": 2, "NeaA": 2}
+    samples = model.get_samples(
+        *[sample_counts.get(p.id, 0) for p in model.populations])
+
     return species, model, contig, samples
 
 
@@ -21,7 +97,7 @@ def homsap_papuans_Neutral(seed, verbosity, length):
     species, model, contig, samples = homsap_papuans_model(length)
     engine = stdpopsim.get_engine("msprime")
     ts = engine.simulate(model, contig, samples, seed=seed)
-    return ts, (0, 0, 0)
+    return ts, (contig.origin, 0, 0, 0)
 
 
 def homsap_papuans_DFE(seed, verbosity, length):
@@ -36,7 +112,7 @@ def homsap_papuans_DFE(seed, verbosity, length):
             extended_events=[],
             slim_no_recapitation=True,
             )
-    return ts, (0, 0, 0)
+    return ts, (contig.origin, 0, 0, 0)
 
 
 def homsap_papuans_AI_Den1_to_Papuan(seed, verbosity, length):
@@ -116,7 +192,9 @@ def homsap_papuans_AI_Den1_to_Papuan(seed, verbosity, length):
             # slim_no_burnin=True,
             )
 
-    return ts, (T_mut*model.generation_time, T_sel*model.generation_time, s)
+    return ts, (
+            contig.origin, T_mut*model.generation_time,
+            T_sel*model.generation_time, s)
 
 
 def homsap_papuans_Sweep_Papuan(seed, verbosity, length):
@@ -172,11 +250,13 @@ def homsap_papuans_Sweep_Papuan(seed, verbosity, length):
             # slim_no_burnin=True,
             )
 
-    return ts, (T_mut*model.generation_time, T_sel*model.generation_time, s)
+    return ts, (
+            contig.origin, T_mut*model.generation_time,
+            T_sel*model.generation_time, s)
 
 
 toai_simulations = {
-    "HomSap/PapuansOutOfAfrica_10J19" : {
+    "HomSap/PapuansOutOfAfrica_10J19": {
         "Neutral": homsap_papuans_Neutral,
         "DFE": homsap_papuans_DFE,
         "AI/Den1_to_Papuan": homsap_papuans_AI_Den1_to_Papuan,
@@ -203,7 +283,8 @@ def parse_args():
             help="Length of the genomic region to simulate. [default=%(default)s]")
     parser.add_argument(
             "model", choices=list(toai_simulations.keys()), metavar="model",
-            help=f"Demographic model to simulate. One of {list(toai_simulations.keys())}")
+            help="Demographic model to simulate. "
+                 f"One of {list(toai_simulations.keys())}")
     parser.add_argument(
             "scenario",
             help="The scenario (mutation model) to simulate. Use the special "
@@ -245,9 +326,9 @@ if __name__ == "__main__":
     odir = f"{args.output_dir}/{args.model}/{args.scenario}"
     os.makedirs(odir, exist_ok=True)
 
-    ts, (T_mut, T_sel, s) = func(seed, args.verbosity, args.length)
+    ts, (origin, T_mut, T_sel, s) = func(seed, args.verbosity, args.length)
     ts = stdpopsim.ext.save_ext(
             ts, "toai", __version__,
-            seed=seed, scenario=args.scenario, model=args.model,
+            seed=seed, scenario=args.scenario, model=args.model, origin=origin,
             T_mut=T_mut, T_sel=T_sel, s=s)
     ts.dump(f"{odir}/{seed}.trees")
