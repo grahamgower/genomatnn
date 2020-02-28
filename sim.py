@@ -10,6 +10,8 @@ import attr
 import stdpopsim
 import msprime
 
+import provenance
+
 
 __version__ = "0.1"
 
@@ -429,16 +431,16 @@ if __name__ == "__main__":
         assert args.slim_script, "ts is None, but no --slim-script requested"
         exit(0)
 
-    ts = stdpopsim.ext.dedup_slim_provenances(ts)
+    ts = provenance.dedup_slim_provenances(ts)
 
-    save_info = dict(
+    params = dict(
             command=" ".join(sys.argv[1:]),
             seed=seed, modelspec=modelspec, origin=origin,
             T_mut=T_mut, T_sel=T_sel, s=s)
     if len(kwargs) > 0:
-        save_info["extra_kwargs"] = kwargs
+        params["extra_kwargs"] = kwargs
 
-    ts = stdpopsim.ext.save_ext(ts, "toai", __version__, **save_info)
+    ts = provenance.save_parameters(ts, "toai", __version__, **params)
 
     popid = {i: p.id for i, p in enumerate(model.populations)}
     observed_counts = collections.Counter(
