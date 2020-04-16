@@ -5,6 +5,7 @@ import random
 import argparse
 import collections
 import functools
+import bisect
 
 import attr
 import stdpopsim
@@ -13,6 +14,7 @@ import msprime
 import provenance
 
 
+_module_name = "genomatnn"
 __version__ = "0.1"
 
 
@@ -34,6 +36,49 @@ def simple_chrom_name(chrom):
     return chrom.lower()
 
 
+def recomb_slice(recomb_map, start=None, end=None):
+    """
+    Returns a subset of this recombination map between the specified end
+    points. If start is None, it defaults to 0. If end is None, it defaults
+    to the end of the map.
+    """
+    if hasattr(msprime.RecombinationMap, "slice"):
+        raise RuntimeError("Using msprime >= 1.0. Should use recombination map slicing")
+
+    positions = recomb_map.get_positions()
+    rates = recomb_map.get_rates()
+
+    if start is None:
+        i = 0
+        start = 0
+    if end is None:
+        end = positions[-1]
+        j = len(positions)
+
+    if (start < 0 or end < 0 or start > positions[-1] or end > positions[-1]
+       or start > end):
+        raise IndexError(f"Invalid subset: start={start}, end={end}")
+
+    if start != 0:
+        i = bisect.bisect_left(positions, start)
+        if start < positions[i]:
+            i -= 1
+    if end != positions[-1]:
+        j = bisect.bisect_right(positions, end, lo=i)
+
+    new_positions = list(positions[i:j])
+    new_rates = list(rates[i:j])
+    new_positions[0] = start
+    if end > new_positions[-1]:
+        new_positions.append(end)
+        new_rates.append(0)
+    else:
+        new_rates[-1] = 0
+    new_positions = [pos-start for pos in new_positions]
+
+    return msprime.RecombinationMap(new_positions, new_rates)
+
+
 def random_autosomal_chunk(species, genetic_map, length):
     """
     Returns a `length` sized recombination map from the given `species`' `genetic_map`.
@@ -42,10 +87,6 @@ def random_autosomal_chunk(species, genetic_map, length):
     length. The position is drawn uniformly from the autosome, excluding any
     flanking regions with zero recombination rate (telomeres).
     """
-
-    if not hasattr(msprime.RecombinationMap, "slice"):
-        raise RuntimeError("recombination map slicing requires msprime >= 1.0")
-
     chromosomes = species.genome.chromosomes
     w = []
     for i, ch in enumerate(chromosomes):
@@ -78,7 +119,8 @@ def random_autosomal_chunk(species, genetic_map, length):
                 f"shorter than {length}.")
 
     pos = random.randrange(positions[j], positions[k] - length)
-    new_map = recomb_map[pos:pos+length]  # requires msprime >= 1.0
+    # new_map = recomb_map[pos:pos+length]  # requires msprime >= 1.0
+    new_map = recomb_slice(recomb_map, start=pos, end=pos+length)
     origin = f"{chrom.id}:{pos}-{pos+length}"
     contig = MyContig(
             recombination_map=new_map, mutation_rate=chrom.mutation_rate,
@@ -97,8 +139,13 @@ def homsap_papuans_model(length, sample_counts):
 
 
 def homsap_papuans_Neutral(model, contig, samples, seed, verbosity, **kwargs):
-    engine = stdpopsim.get_engine("msprime")
-    ts = engine.simulate(model, contig, samples, seed=seed)
+    engine = stdpopsim.get_engine("slim")
+    ts = engine.simulate(
+            model, contig, samples, seed=seed,
+            verbosity=verbosity,
+            slim_burn_in=0.1,
+            slim_scaling_factor=10,
+            )
     return ts, (contig.origin, 0, 0, 0)
 
 
@@ -110,10 +157,53 @@ def homsap_papuans_DFE(model, contig, samples, seed, verbosity, **kwargs):
             seed=seed,
             verbosity=verbosity,
             mutation_types=mutation_types,
-            extended_events=[],
-            slim_no_recapitation=True,
+            slim_burn_in=10,
+            slim_scaling_factor=10,
             )
     return ts, (contig.origin, 0, 0, 0)
+
+
+def get_param(model, p1, p2, split=False, migration=False):
+    """
+    Find time of split between p1 and p2 (if split=True),
+    or most recent direct migration (migration=True).
+    If p1 or p2 don't split/migrate directly, we look at the parent populations.
+    """
+    assert split or migration
+    if p1 == p2:
+        raise ValueError("p1 and p2 are the same")
+    for p in (p1, p2):
+        if p >= len(model.populations):
+            raise ValueError(f"{p} not valid for model")
+    pops = sorted((p1, p2))
+    last_time = 0
+    for de in model.demographic_events:
+        if de.time < last_time:
+            raise ValueError("demographic_events not sorted in time-ascending order")
+        last_time = de.time
+        if isinstance(de, msprime.MassMigration):
+            pp = sorted((de.source, de.dest))
+            if pops == pp:
+                if split and de.proportion == 1:
+                    return de.time
+                if migration and de.proportion < 1:
+                    return de.time
+
+            # ascend into parent population
+            if de.proportion == 1:
+                if de.source == pops[0]:
+                    pops = sorted((de.dest, pops[1]))
+                elif de.source == pops[1]:
+                    pops = sorted((pops[0], de.dest))
+    return None
+
+
+def get_split_time(model, p1, p2):
+    return get_param(model, p1, p2, split=True)
+
+
+def get_migration_time(model, p1, p2):
+    return get_param(model, p1, p2, migration=True)
 
 
 def homsap_papuans_AI_Den_to_Papuan(
@@ -125,6 +215,8 @@ def homsap_papuans_AI_Den_to_Papuan(
     if Den not in ("Den1", "Den2"):
         raise ValueError("Source population Den must be either Den1 or Den2.")
 
+    pop = {p.id: i for i, p in enumerate(model.populations)}
+
     mutation_types = []
     if dfe:
         mutation_types.extend(stdpopsim.ext.KimDFE())
@@ -132,12 +224,11 @@ def homsap_papuans_AI_Den_to_Papuan(
     mutation_types.append(positive)
     mut_id = len(mutation_types)
 
-    # TODO: get these from the model itself
-    T_Den_Nea_split = 15090
-    T_DenA_Den1_split = 9750
-    T_DenA_Den2_split = 12500
-    T_Den1_Papuan_mig = 29.8e3 / model.generation_time
-    T_Den2_Papuan_mig = 45.7e3 / model.generation_time
+    T_Den_Nea_split = get_split_time(model, pop["DenA"], pop["NeaA"])
+    T_DenA_Den1_split = get_split_time(model, pop["DenA"], pop["Den1"])
+    T_DenA_Den2_split = get_split_time(model, pop["DenA"], pop["Den2"])
+    T_Den1_Papuan_mig = get_migration_time(model, pop["Papuan"], pop["Den1"])
+    T_Den2_Papuan_mig = get_migration_time(model, pop["Papuan"], pop["Den2"])
 
     if Den == "Den1":
         T_Den_split = T_DenA_Den1_split
@@ -150,7 +241,6 @@ def homsap_papuans_AI_Den_to_Papuan(
     T_sel = rng.uniform(1e3 / model.generation_time, T_mig)
     s = rng.uniform(0.001, 0.1)
 
-    pop = {p.id: i for i, p in enumerate(model.populations)}
     coordinate = round(contig.recombination_map.get_length() / 2)
 
     extended_events = [
@@ -199,8 +289,8 @@ def homsap_papuans_AI_Den_to_Papuan(
             mutation_types=mutation_types,
             extended_events=extended_events,
             slim_script=slim_script,
-            slim_no_recapitation=dfe,
-            # slim_no_burnin=True,
+            slim_burn_in=10 if dfe else 0.1,
+            slim_scaling_factor=10,
             )
 
     return ts, (
@@ -214,20 +304,20 @@ def homsap_papuans_Sweep_Papuan(
         **kwargs):
     rng = random.Random(seed)
 
+    pop = {p.id: i for i, p in enumerate(model.populations)}
+
     mutation_types = []
     if dfe:
         mutation_types.extend(stdpopsim.ext.KimDFE())
-    mutation_types = stdpopsim.ext.KimDFE()
     positive = stdpopsim.ext.MutationType(convert_to_substitution=False)
     mutation_types.append(positive)
     mut_id = len(mutation_types)
 
-    T_Papuan_Ghost_split = 1784
+    T_Papuan_Ghost_split = get_split_time(model, pop["Papuan"], pop["Ghost"])
     T_sel = rng.uniform(1e3 / model.generation_time, T_Papuan_Ghost_split)
     T_mut = rng.uniform(T_sel, T_Papuan_Ghost_split)
     s = rng.uniform(0.001, 0.1)
 
-    pop = {p.id: i for i, p in enumerate(model.populations)}
     coordinate = round(contig.recombination_map.get_length() / 2)
 
     extended_events = [
@@ -262,8 +352,8 @@ def homsap_papuans_Sweep_Papuan(
             mutation_types=mutation_types,
             extended_events=extended_events,
             slim_script=slim_script,
-            slim_no_recapitation=dfe,
-            # slim_no_burnin=True,
+            slim_burn_in=10 if dfe else 0.1,
+            slim_scaling_factor=10,
             )
 
     return ts, (
@@ -271,7 +361,7 @@ def homsap_papuans_Sweep_Papuan(
             T_sel*model.generation_time, s)
 
 
-toai_simulations = {
+_simulations = {
     "HomSap/PapuansOutOfAfrica_10J19": {
         # Model kwargs come first and must be prefixed with an underscore.
         "_sample_counts": {"YRI": 200, "Papuan": 200, "DenA": 2, "NeaA": 2},
@@ -291,7 +381,7 @@ toai_simulations = {
 }
 
 
-def toai_models(mdict=toai_simulations):
+def _models(mdict=_simulations):
     models = {}
     kwargs = {}
     for key, val in mdict.items():
@@ -305,13 +395,13 @@ def toai_models(mdict=toai_simulations):
         else:
             children = (
                     (f"{key}/{m}", (f, kw))
-                    for m, (f, kw) in toai_models(val).items())
+                    for m, (f, kw) in _models(val).items())
             models.update(children)
     return models
 
 
 def parse_args():
-    prefixes = "\n".join(toai_simulations.keys())
+    prefixes = "\n".join(_simulations.keys())
 
     parser = argparse.ArgumentParser(description="Run a simulation.")
 
@@ -370,7 +460,7 @@ def parse_args():
                  f"{prefixes}")
     args = parser.parse_args()
 
-    models = toai_models()
+    models = _models()
     for model, (func, kwargs) in models.items():
         if args.modelspec == model:
             args.modelspec = model, (func, kwargs)
@@ -440,7 +530,7 @@ if __name__ == "__main__":
     if len(kwargs) > 0:
         params["extra_kwargs"] = kwargs
 
-    ts = provenance.save_parameters(ts, "toai", __version__, **params)
+    ts = provenance.save_parameters(ts, _module_name, __version__, **params)
 
     popid = {i: p.id for i, p in enumerate(model.populations)}
     observed_counts = collections.Counter(
