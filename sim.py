@@ -284,7 +284,7 @@ def homsap_papuans_AI_Den_to_Papuan(
     engine = stdpopsim.get_engine("slim")
     ts = engine.simulate(
             model, contig, samples,
-            seed=rng.randrange(1, 2**32),
+            seed=seed,
             verbosity=verbosity,
             mutation_types=mutation_types,
             extended_events=extended_events,
@@ -347,7 +347,7 @@ def homsap_papuans_Sweep_Papuan(
     engine = stdpopsim.get_engine("slim")
     ts = engine.simulate(
             model, contig, samples,
-            seed=rng.randrange(1, 2**32),
+            seed=seed,
             verbosity=verbosity,
             mutation_types=mutation_types,
             extended_events=extended_events,
