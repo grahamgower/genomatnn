@@ -8,10 +8,11 @@ import functools
 import bisect
 
 import attr
-import stdpopsim
 import msprime
+import stdpopsim
 
 import provenance
+import contact
 
 
 _module_name = "genomatnn"
@@ -163,49 +164,6 @@ def homsap_papuans_DFE(model, contig, samples, seed, verbosity, **kwargs):
     return ts, (contig.origin, 0, 0, 0)
 
 
-def get_param(model, p1, p2, split=False, migration=False):
-    """
-    Find time of split between p1 and p2 (if split=True),
-    or most recent direct migration (migration=True).
-    If p1 or p2 don't split/migrate directly, we look at the parent populations.
-    """
-    assert split or migration
-    if p1 == p2:
-        raise ValueError("p1 and p2 are the same")
-    for p in (p1, p2):
-        if p >= len(model.populations):
-            raise ValueError(f"{p} not valid for model")
-    pops = sorted((p1, p2))
-    last_time = 0
-    for de in model.demographic_events:
-        if de.time < last_time:
-            raise ValueError("demographic_events not sorted in time-ascending order")
-        last_time = de.time
-        if isinstance(de, msprime.MassMigration):
-            pp = sorted((de.source, de.dest))
-            if pops == pp:
-                if split and de.proportion == 1:
-                    return de.time
-                if migration and de.proportion < 1:
-                    return de.time
-
-            # ascend into parent population
-            if de.proportion == 1:
-                if de.source == pops[0]:
-                    pops = sorted((de.dest, pops[1]))
-                elif de.source == pops[1]:
-                    pops = sorted((pops[0], de.dest))
-    return None
-
-
-def get_split_time(model, p1, p2):
-    return get_param(model, p1, p2, split=True)
-
-
-def get_migration_time(model, p1, p2):
-    return get_param(model, p1, p2, migration=True)
-
-
 def homsap_papuans_AI_Den_to_Papuan(
         model, contig, samples, seed, verbosity,
         dfe=False, Den="Den1", slim_script=False, min_allele_frequency=0.1,
@@ -224,11 +182,11 @@ def homsap_papuans_AI_Den_to_Papuan(
     mutation_types.append(positive)
     mut_id = len(mutation_types)
 
-    T_Den_Nea_split = get_split_time(model, pop["DenA"], pop["NeaA"])
-    T_DenA_Den1_split = get_split_time(model, pop["DenA"], pop["Den1"])
-    T_DenA_Den2_split = get_split_time(model, pop["DenA"], pop["Den2"])
-    T_Den1_Papuan_mig = get_migration_time(model, pop["Papuan"], pop["Den1"])
-    T_Den2_Papuan_mig = get_migration_time(model, pop["Papuan"], pop["Den2"])
+    T_Den_Nea_split = contact.tmrca(model, pop["DenA"], pop["NeaA"])
+    T_DenA_Den1_split = contact.tmrca(model, pop["DenA"], pop["Den1"])
+    T_DenA_Den2_split = contact.tmrca(model, pop["DenA"], pop["Den2"])
+    T_Den1_Papuan_mig = contact.tmrca(model, pop["Papuan"], pop["Den1"])
+    T_Den2_Papuan_mig = contact.tmrca(model, pop["Papuan"], pop["Den2"])
 
     if Den == "Den1":
         T_Den_split = T_DenA_Den1_split
@@ -313,7 +271,7 @@ def homsap_papuans_Sweep_Papuan(
     mutation_types.append(positive)
     mut_id = len(mutation_types)
 
-    T_Papuan_Ghost_split = get_split_time(model, pop["Papuan"], pop["Ghost"])
+    T_Papuan_Ghost_split = contact.tmrca(model, pop["Papuan"], pop["Ghost"])
     T_sel = rng.uniform(1e3 / model.generation_time, T_Papuan_Ghost_split)
     T_mut = rng.uniform(T_sel, T_Papuan_Ghost_split)
     s = rng.uniform(0.001, 0.1)
