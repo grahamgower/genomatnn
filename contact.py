@@ -80,6 +80,35 @@ def tmrca(model, *pops):
     return min_coalescence_time(ddb, samples)
 
 
+def split_time(model, p1, p2):
+    """
+    Split time of p1 and p2 (or their parent lineages).
+    """
+    if p1 == p2:
+        raise ValueError("p1 and p2 are the same")
+    for p in (p1, p2):
+        if p >= len(model.populations):
+            raise ValueError(f"{p} not valid for model")
+    pops = sorted((p1, p2))
+    last_time = 0
+    for de in model.demographic_events:
+        if de.time < last_time:
+            raise ValueError("demographic_events not sorted in time-ascending order")
+        last_time = de.time
+        if isinstance(de, msprime.MassMigration):
+            pp = sorted((de.source, de.dest))
+            if pops == pp:
+                if de.proportion == 1:
+                    return de.time
+            # ascend into parent lineage
+            if de.proportion == 1:
+                if de.source == pops[0]:
+                    pops = sorted((de.dest, pops[1]))
+                elif de.source == pops[1]:
+                    pops = sorted((pops[0], de.dest))
+    return None
+
+
 def _5pop_test_demog(N=1000):
     populations = [stdpopsim.Population(f"pop{i}", f"Population {i}")
                    for i in range(5)]

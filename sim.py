@@ -6,17 +6,21 @@ import argparse
 import collections
 import functools
 import bisect
+import logging
 
 import attr
 import msprime
 import stdpopsim
 
+import config
 import provenance
 import contact
 
 
 _module_name = "genomatnn"
 __version__ = "0.1"
+
+logger = logging.getLogger(__name__)
 
 
 @attr.s(frozen=True, kw_only=True)
@@ -139,24 +143,22 @@ def homsap_papuans_model(length, sample_counts):
     return species, model, contig, samples
 
 
-def homsap_papuans_Neutral(model, contig, samples, seed, verbosity, **kwargs):
-    engine = stdpopsim.get_engine("slim")
+def homsap_papuans_Neutral(model, contig, samples, seed, engine="slim", **kwargs):
+    engine = stdpopsim.get_engine(engine)
     ts = engine.simulate(
             model, contig, samples, seed=seed,
-            verbosity=verbosity,
             slim_burn_in=0.1,
             slim_scaling_factor=10,
             )
     return ts, (contig.origin, 0, 0, 0)
 
 
-def homsap_papuans_DFE(model, contig, samples, seed, verbosity, **kwargs):
+def homsap_papuans_DFE(model, contig, samples, seed, **kwargs):
     mutation_types = stdpopsim.ext.KimDFE()
     engine = stdpopsim.get_engine("slim")
     ts = engine.simulate(
             model, contig, samples,
             seed=seed,
-            verbosity=verbosity,
             mutation_types=mutation_types,
             slim_burn_in=10,
             slim_scaling_factor=10,
@@ -165,7 +167,7 @@ def homsap_papuans_DFE(model, contig, samples, seed, verbosity, **kwargs):
 
 
 def homsap_papuans_AI_Den_to_Papuan(
-        model, contig, samples, seed, verbosity,
+        model, contig, samples, seed,
         dfe=False, Den="Den1", slim_script=False, min_allele_frequency=0.1,
         **kwargs):
     rng = random.Random(seed)
@@ -185,8 +187,16 @@ def homsap_papuans_AI_Den_to_Papuan(
     T_Den_Nea_split = contact.tmrca(model, pop["DenA"], pop["NeaA"])
     T_DenA_Den1_split = contact.tmrca(model, pop["DenA"], pop["Den1"])
     T_DenA_Den2_split = contact.tmrca(model, pop["DenA"], pop["Den2"])
+
+    assert T_Den_Nea_split == 15090
+    assert T_DenA_Den1_split == 9750
+    assert T_DenA_Den2_split == 12500
+
     T_Den1_Papuan_mig = contact.tmrca(model, pop["Papuan"], pop["Den1"])
     T_Den2_Papuan_mig = contact.tmrca(model, pop["Papuan"], pop["Den2"])
+
+    assert T_Den1_Papuan_mig == 29.8e3 / model.generation_time
+    assert T_Den2_Papuan_mig == 45.7e3 / model.generation_time
 
     if Den == "Den1":
         T_Den_split = T_DenA_Den1_split
@@ -243,7 +253,6 @@ def homsap_papuans_AI_Den_to_Papuan(
     ts = engine.simulate(
             model, contig, samples,
             seed=seed,
-            verbosity=verbosity,
             mutation_types=mutation_types,
             extended_events=extended_events,
             slim_script=slim_script,
@@ -257,7 +266,7 @@ def homsap_papuans_AI_Den_to_Papuan(
 
 
 def homsap_papuans_Sweep_Papuan(
-        model, contig, samples, seed, verbosity,
+        model, contig, samples, seed,
         dfe=False, slim_script=False, min_allele_frequency=0.1,
         **kwargs):
     rng = random.Random(seed)
@@ -271,7 +280,9 @@ def homsap_papuans_Sweep_Papuan(
     mutation_types.append(positive)
     mut_id = len(mutation_types)
 
-    T_Papuan_Ghost_split = contact.tmrca(model, pop["Papuan"], pop["Ghost"])
+    T_Papuan_Ghost_split = contact.split_time(model, pop["Papuan"], pop["Ghost"])
+    assert T_Papuan_Ghost_split == 1784
+
     T_sel = rng.uniform(1e3 / model.generation_time, T_Papuan_Ghost_split)
     T_mut = rng.uniform(T_sel, T_Papuan_Ghost_split)
     s = rng.uniform(0.001, 0.1)
@@ -306,7 +317,6 @@ def homsap_papuans_Sweep_Papuan(
     ts = engine.simulate(
             model, contig, samples,
             seed=seed,
-            verbosity=verbosity,
             mutation_types=mutation_types,
             extended_events=extended_events,
             slim_script=slim_script,
@@ -328,7 +338,10 @@ _simulations = {
         "demographic_model": homsap_papuans_model,
 
         # Various mutation models to stack on top of the demographic model.
-        "Neutral": homsap_papuans_Neutral,
+        "Neutral/slim":
+            functools.partial(homsap_papuans_Neutral, engine="slim"),
+        "Neutral/msprime":
+            functools.partial(homsap_papuans_Neutral, engine="msprime"),
         "DFE": homsap_papuans_DFE,
         "AI/Den1_to_Papuan":
             functools.partial(homsap_papuans_AI_Den_to_Papuan, Den="Den1"),
@@ -356,6 +369,64 @@ def _models(mdict=_simulations):
                     for m, (f, kw) in _models(val).items())
             models.update(children)
     return models
+
+
+def get_demog_model(modelspec, sequence_length=100000):
+    models = _models()
+    for model, (sim_func, sim_kwargs) in models.items():
+        if modelspec == model:
+            break
+    else:
+        raise ValueError(f"{modelspec} not found")
+
+    model_func = sim_kwargs.get("demographic_model")
+    _, model, _, _ = model_func(sequence_length, {})
+    return model
+
+
+def sim(
+        modelspec, sequence_length, min_allele_frequency,
+        seed=None, slim_script=False, command=None):
+    models = _models()
+    for model, (sim_func, sim_kwargs) in models.items():
+        if modelspec == model:
+            break
+    else:
+        raise ValueError(f"{modelspec} not found")
+
+    model_func = sim_kwargs.get("demographic_model")
+    assert model_func is not None
+    del sim_kwargs["demographic_model"]
+    sample_counts = sim_kwargs.get("sample_counts")
+    assert sample_counts is not None
+    del sim_kwargs["sample_counts"]
+    sim_kwargs["min_allele_frequency"] = min_allele_frequency
+
+    # Do simulation.
+    species, model, contig, samples = model_func(sequence_length, sample_counts)
+    ts, (origin, T_mut, T_sel, s) = sim_func(
+            model, contig, samples, seed,
+            slim_script=slim_script, **sim_kwargs)
+    if ts is None:
+        return None
+
+    popid = {i: p.id for i, p in enumerate(model.populations)}
+    observed_counts = collections.Counter(
+            [popid[ts.get_population(i)] for i in ts.samples()])
+    assert observed_counts == sample_counts, f"{observed_counts} != {sample_counts}"
+
+    # Add provenance.
+    ts = provenance.dedup_slim_provenances(ts)
+    params = dict(
+            seed=seed, modelspec=modelspec, origin=origin,
+            T_mut=T_mut, T_sel=T_sel, s=s)
+    if command is not None:
+        params["command"] = command
+    if len(sim_kwargs) > 0:
+        params["extra_kwargs"] = sim_kwargs
+    ts = provenance.save_parameters(ts, _module_name, __version__, **params)
+
+    return ts
 
 
 def parse_args():
@@ -388,7 +459,10 @@ def parse_args():
 
     parser.add_argument(
             "-v", "--verbose", default=False, action="store_true",
-            help="Show verbose output from SLiM script.")
+            help="Increase verbosity to debug level.")
+    parser.add_argument(
+            "-q", "--quiet", default=False, action="store_true",
+            help="Decrease verbosity to error-only level")
     parser.add_argument(
             "-s", "--seed", type=int, default=None,
             help="Seed for the random number generator.")
@@ -421,7 +495,6 @@ def parse_args():
     models = _models()
     for model, (func, kwargs) in models.items():
         if args.modelspec == model:
-            args.modelspec = model, (func, kwargs)
             break
     else:
         found = False
@@ -438,11 +511,6 @@ def parse_args():
         else:
             parser.error(f"No models matching spec `{args.modelspec}`.")
 
-    args.verbosity = 0
-    if args.verbose:
-        # Debug verbosity level.
-        args.verbosity = 2
-
     return args
 
 
@@ -454,45 +522,22 @@ if __name__ == "__main__":
         random.seed()
         seed = random.randrange(1, 2**32)
 
-    modelspec, (sim_func, kwargs) = args.modelspec
-    odir = f"{args.output_dir}/{modelspec}"
-    os.makedirs(odir, exist_ok=True)
+    if args.verbose:
+        config.logger_setup("DEBUG")
+    elif args.quiet:
+        config.logger_setup("ERROR")
+    else:
+        config.logger_setup("INFO")
 
-    demographic_model_func = kwargs.get("demographic_model")
-    assert demographic_model_func is not None
-    del kwargs["demographic_model"]
-
-    sample_counts = kwargs.get("sample_counts")
-    assert sample_counts is not None
-    del kwargs["sample_counts"]
-
-    kwargs["min_allele_frequency"] = args.min_allele_frequency
-
-    species, model, contig, samples = demographic_model_func(
-            args.length, sample_counts)
-
-    ts, (origin, T_mut, T_sel, s) = sim_func(
-            model, contig, samples, seed, args.verbosity,
-            slim_script=args.slim_script, **kwargs)
+    ts = sim(
+            args.modelspec, args.length, args.min_allele_frequency,
+            seed=seed, slim_script=args.slim_script,
+            command=" ".join(sys.argv[1:]))
 
     if ts is None:
         assert args.slim_script, "ts is None, but no --slim-script requested"
         exit(0)
 
-    ts = provenance.dedup_slim_provenances(ts)
-
-    params = dict(
-            command=" ".join(sys.argv[1:]),
-            seed=seed, modelspec=modelspec, origin=origin,
-            T_mut=T_mut, T_sel=T_sel, s=s)
-    if len(kwargs) > 0:
-        params["extra_kwargs"] = kwargs
-
-    ts = provenance.save_parameters(ts, _module_name, __version__, **params)
-
-    popid = {i: p.id for i, p in enumerate(model.populations)}
-    observed_counts = collections.Counter(
-            [popid[ts.get_population(i)] for i in ts.samples()])
-    assert observed_counts == sample_counts, f"{observed_counts} != {sample_counts}"
-
+    odir = f"{args.output_dir}/{args.modelspec}"
+    os.makedirs(odir, exist_ok=True)
     ts.dump(f"{odir}/{seed}.trees")
