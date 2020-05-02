@@ -39,28 +39,38 @@ class ConfigError(RuntimeError):
 
 class Config():
     def __init__(self, filename):
-        self.filename = filename
-        self.config = toml.load(self.filename)
-        self._parse_toplevel()
-        self._parse_pop()
-        self._parse_sim()
-        self._parse_vcf()
 
-    def check_keys(self, dict_, keys, pfx=""):
+        # Attributes for external use.
+        self.filename = filename
+        self.dir = None
+        self.pop = None
+        self.sequence_length = None
+        self.min_allele_frequency = None
+        self.vcf_samples = None
+        self.vcf_tranche = None
+        self.phasing = None
+
+        # Read in toml file and fill in the attributes.
+        self.config = toml.load(self.filename)
+        self._getcfg_toplevel()
+        self._getcfg_pop()
+        self._getcfg_sim()
+        self._getcfg_vcf()
+
+    def _verify_keys_exist(self, dict_, keys, pfx=""):
         for k in keys:
             if k not in dict_:
                 raise ConfigError(f"{self.filename}: {pfx}{k} not defined.")
 
-    def _parse_toplevel(self):
-        toplevel_keys = ("dir", )
-        self.check_keys(self.config, toplevel_keys)
+    def _getcfg_toplevel(self):
+        toplevel_keys = ["dir", "pop", "sim", "vcf"]
+        self._verify_keys_exist(self.config, toplevel_keys)
         self.dir = pathlib.Path(self.config["dir"])
 
-    def _parse_pop(self):
+    def _getcfg_pop(self):
         pop = self.config.get("pop")
-        if pop is None or len(pop) == 0:
-            raise ConfigError(
-                    f"{self.filename}: no populations defined.")
+        if len(pop) == 0:
+            raise ConfigError(f"{self.filename}: no populations defined.")
         for k, v in pop.items():
             if not isinstance(v, list):
                 pop[k] = []
@@ -70,17 +80,17 @@ class Config():
         self.pop = pop
         self.vcf_samples = list(itertools.chain(*self.pop.values()))
 
-    def _parse_sim(self):
+    def _getcfg_sim(self):
         self.sim = self.config.get("sim")
-        if self.sim is None or len(self.sim) == 0:
+        if len(self.sim) == 0:
             raise ConfigError(f"{self.filename}: no simulations defined.")
-        sim_keys = ("sequence_length", "min_allele_frequency", "tranche")
-        self.check_keys(self.sim, sim_keys, "sim.")
+        sim_keys = ["sequence_length", "min_allele_frequency", "tranche"]
+        self._verify_keys_exist(self.sim, sim_keys, "sim.")
         self.sequence_length = self.sim["sequence_length"]
         self.min_allele_frequency = self.sim["sequence_length"]
-        self._parse_tranche(self.sim["tranche"])
+        self._getcfg_tranche(self.sim["tranche"])
 
-    def _parse_tranche(self, tranche):
+    def _getcfg_tranche(self, tranche):
         assert tranche is not None
         if len(tranche) == 0:
             raise ConfigError(f"{self.filename}: no tranches defined.")
@@ -95,12 +105,12 @@ class Config():
                                 f"Options are: {pops}")
         self.tranche = tranche
 
-    def _parse_vcf(self):
+    def _getcfg_vcf(self):
         self.vcf = self.config.get("vcf")
         if self.vcf is None or len(self.vcf) == 0:
             raise ConfigError(f"{self.filename}: no vcf defined.")
-        vcf_keys = ("file", )
-        self.check_keys(self.vcf, vcf_keys, "vcf.")
+        vcf_keys = ["file", ]
+        self._verify_keys_exist(self.vcf, vcf_keys, "vcf.")
         file_ = self.vcf.get("file")
         chr_ = self.vcf.get("chr")
         if chr_ is None:
@@ -116,7 +126,10 @@ class Config():
         self.phasing = vcf.sample_phasing(self.file[0], self.vcf_samples)
 
     def sample_counts(self):
-        return {p: len(v) for p, v in self.pop.items()}
+        """
+        Haploid sample numbers for each population.
+        """
+        return {p: 2*len(v) for p, v in self.pop.items()}
 
 
 if __name__ == "__main__":
@@ -126,4 +139,3 @@ if __name__ == "__main__":
     cfg = Config(cfg_file)
     print(cfg.sample_counts())
     print(cfg.phasing.count(True), cfg.phasing.count(False))
-    print(cfg.phasing)
