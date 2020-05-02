@@ -168,7 +168,7 @@ def homsap_papuans_DFE(model, contig, samples, seed, **kwargs):
 
 def homsap_papuans_AI_Den_to_Papuan(
         model, contig, samples, seed,
-        dfe=False, Den="Den1", slim_script=False, min_allele_frequency=0.1,
+        dfe=False, Den="Den1", slim_script=False, min_allele_frequency=0.05,
         **kwargs):
     rng = random.Random(seed)
 
@@ -267,7 +267,7 @@ def homsap_papuans_AI_Den_to_Papuan(
 
 def homsap_papuans_Sweep_Papuan(
         model, contig, samples, seed,
-        dfe=False, slim_script=False, min_allele_frequency=0.1,
+        dfe=False, slim_script=False, min_allele_frequency=0.05,
         **kwargs):
     rng = random.Random(seed)
 
@@ -332,7 +332,7 @@ def homsap_papuans_Sweep_Papuan(
 _simulations = {
     "HomSap/PapuansOutOfAfrica_10J19": {
         # Model kwargs come first and must be prefixed with an underscore.
-        "_sample_counts": {"YRI": 200, "Papuan": 200, "DenA": 2, "NeaA": 2},
+        "_sample_counts": {"YRI": 216, "Papuan": 56, "DenA": 2, "NeaA": 2},
 
         # Base demographic model.
         "demographic_model": homsap_papuans_model,
@@ -478,7 +478,7 @@ def parse_args():
             "--slim-script", default=False, action="store_true",
             help="Print SLiM script to stdout. The simulation is not run.")
     parser.add_argument(
-            "-a", "--min-allele-frequency", metavar="AF", default=0.1,
+            "-a", "--min-allele-frequency", metavar="AF", default=0.05,
             type=allele_frequency,
             help="Condition on the final allele frequency of the selected "
                  "mutation being >AF in the target popuation. "
