@@ -87,7 +87,7 @@ class Config():
         sim_keys = ["sequence_length", "min_allele_frequency", "tranche"]
         self._verify_keys_exist(self.sim, sim_keys, "sim.")
         self.sequence_length = self.sim["sequence_length"]
-        self.min_allele_frequency = self.sim["sequence_length"]
+        self.min_allele_frequency = self.sim["min_allele_frequency"]
         self._getcfg_tranche(self.sim["tranche"])
 
     def _getcfg_tranche(self, tranche):

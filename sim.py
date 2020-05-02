@@ -281,7 +281,7 @@ def homsap_papuans_Sweep_Papuan(
     mut_id = len(mutation_types)
 
     T_Papuan_Ghost_split = contact.split_time(model, pop["Papuan"], pop["Ghost"])
-    assert T_Papuan_Ghost_split == 1784
+    assert T_Papuan_Ghost_split == 1784, f"{T_Papuan_Ghost_split}"
 
     T_sel = rng.uniform(1e3 / model.generation_time, T_Papuan_Ghost_split)
     T_mut = rng.uniform(T_sel, T_Papuan_Ghost_split)
@@ -386,7 +386,8 @@ def get_demog_model(modelspec, sequence_length=100000):
 
 def sim(
         modelspec, sequence_length, min_allele_frequency,
-        seed=None, slim_script=False, command=None):
+        seed=None, slim_script=False, command=None,
+        sample_counts=None):
     models = _models()
     for model, (sim_func, sim_kwargs) in models.items():
         if modelspec == model:
@@ -397,7 +398,8 @@ def sim(
     model_func = sim_kwargs.get("demographic_model")
     assert model_func is not None
     del sim_kwargs["demographic_model"]
-    sample_counts = sim_kwargs.get("sample_counts")
+    if sample_counts is None:
+        sample_counts = sim_kwargs.get("sample_counts")
     assert sample_counts is not None
     del sim_kwargs["sample_counts"]
     sim_kwargs["min_allele_frequency"] = min_allele_frequency
