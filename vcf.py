@@ -6,6 +6,44 @@ import collections
 import numpy as np
 
 
+def sample_phasing(vcf, sample_list):
+    """
+    Determine if the genotypes in ``vcf`` are phased for the ``sample_list``.
+    """
+    cmd = ["bcftools", "query",
+           # XXX: if the sample list is too long, this could exceed OS limits.
+           "-s", ",".join(sample_list),
+           "-f", "[%GT\t]\\n",
+           vcf]
+    phasing_unknown = set(range(len(sample_list)))
+    phasing = [True] * len(sample_list)
+
+    with subprocess.Popen(
+            cmd, bufsize=1, text=True,
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE) as p:
+        for line in p.stdout:
+            gt_str_list = line.split()
+            for i, gt_str in enumerate(gt_str_list):
+                if gt_str[0] == ".":
+                    # phasing unknown
+                    continue
+                if gt_str[1] == "/":
+                    phasing[i] = False
+                elif gt_str[1] == "|":
+                    phasing[i] = True
+                phasing_unknown.discard(i)
+            if len(phasing_unknown) == 0:
+                break
+        p.terminate()
+        stderr = p.stderr.read()
+
+    if stderr:
+        raise RuntimeError(f"{vcf}: {stderr}")
+    if len(phasing_unknown) > 0:
+        raise RuntimeError(f"{vcf}: couldn't determine phasing for all samples.")
+    return phasing
+
+
 def vcf2mat(
         vcf, samples, chrom, start, end, rng,
         max_missing_thres=None, maf_thres=None, unphase=True):
@@ -120,7 +158,7 @@ def parse_args():
             help="Exclude SNPs with minor allele frequency < MAF [%(default)s].")
     parser.add_argument(
             "--num-rows", type=int, default=32,
-            help="Resize genotype matrixes to have this many rows [%(default)s].")
+            help="Resize genotype matrices to have this many rows [%(default)s].")
     parser.add_argument("vcf", metavar="in.vcf", help="Input vcf/bcf.")
     return parser.parse_args()
 

@@ -1,0 +1,75 @@
+# Working directory, for simulation output, trained networks, plots, etc.
+dir = "trees2"
+# Reference population. Must be one of the defined populations below.
+ref_pop = "DenA"
+
+[sim]
+sequence_length = 100_000  # 100 kb
+# For selection simulations (sweep or AI), condition on the final allele
+# frequency of the selected mutation being greater than this in the target
+# population.
+min_allele_frequency = 0.05
+
+[sim.tranche]
+# The lables and modelspec(s) for each tranche. The network will be trained to
+# classify data as coming from one of these tranches. Each tranche consists of
+# a list of simulation modelspecs.
+# Only two tranches are supported.
+"not AI" = [
+	"HomSap/PapuansOutOfAfrica_10J19/Neutral/slim",
+	"HomSap/PapuansOutOfAfrica_10J19/Sweep/Papuan",
+
+	# Skip this for now, as it's too compuatationally intensive
+	# to do many replicates for training. :-(
+	#"HomSap/PapuansOutOfAfrica_10J19/DFE",
+]
+
+AI = [
+	"HomSap/PapuansOutOfAfrica_10J19/AI/Den1_to_Papuan",
+	"HomSap/PapuansOutOfAfrica_10J19/AI/Den2_to_Papuan",
+]
+
+[vcf]
+# Path to the (indexed) vcf or bcf file(s). This is used to determine sample
+# phasing, and is the data to which the trained network will be applied.
+
+#file = "/path/to/vcf/all_chromosomes_in_one_file.vcf.gz"
+
+# VCFs are often split by chromosome. If this is the case, a list of
+# chromosomes may be provided here, and the ${chr} string in the filename
+# will be substituted for the chromosome number when applying the trained
+# network. Chromosomes may be specified as integers or strings.
+# Only the first vcf will be used to determining phasing.
+# Only diploid autosomes are supported.
+chr = [ 22 ]
+file = "misc/vcf/HGDP.1000g.archaic.${chr}.bcf"
+
+[pop]
+# For each population, specify the individual IDs in the vcf. This can either
+# be a list of IDs, or the name of a file containing the IDs (one per line).
+# The population names must match those used for the simulations.
+# The order of populations given here will be used for the ordering in the
+# genotype matrices. It's recommended for the source and recipient populations
+# to be adjacent in the genotype matrices.
+NeaA = ["AltaiNeandertal"]
+DenA = ["Denisova"]
+Papuan = "misc/OCEANIA.indlist"
+YRI = "misc/YRI.indlist"
+
+[train]
+num_rows = 32
+epochs = 3
+batch_size = 64
+model = "cnn"
+
+[train.cnn]
+n_conv = 3
+n_conv_filt = 32
+filt_size_x = 4  # spanning across 'sites'
+filt_size_y = 4  # spanning across individuals
+n_dense = 0
+dense_size = 0
+
+[tf]
+devices = ["/gpu:0", "/gpu:1", "/gpu:2"]
+#devices = ["/gpu:0", "/gpu:1", "/gpu:2", "/gpu:3", "/gpu:4"]

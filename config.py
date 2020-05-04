@@ -5,6 +5,7 @@ import logging
 import pathlib
 import itertools
 
+import numpy as np
 import toml
 
 import sim
@@ -43,12 +44,17 @@ class Config():
         # Attributes for external use.
         self.filename = filename
         self.dir = None
+        self.ref_pop = None
+        self.num_rows = None
+        self.num_cols = None
         self.pop = None
         self.sequence_length = None
         self.min_allele_frequency = None
         self.vcf_samples = None
         self.vcf_tranche = None
         self.phasing = None
+        self.pop2tsidx = None
+        self.tf_devices = None
 
         # Read in toml file and fill in the attributes.
         self.config = toml.load(self.filename)
@@ -56,6 +62,7 @@ class Config():
         self._getcfg_pop()
         self._getcfg_sim()
         self._getcfg_vcf()
+        self._getcfg_train()
 
     def _verify_keys_exist(self, dict_, keys, pfx=""):
         for k in keys:
@@ -63,9 +70,10 @@ class Config():
                 raise ConfigError(f"{self.filename}: {pfx}{k} not defined.")
 
     def _getcfg_toplevel(self):
-        toplevel_keys = ["dir", "pop", "sim", "vcf"]
+        toplevel_keys = ["dir", "ref_pop", "pop", "sim", "vcf", "train"]
         self._verify_keys_exist(self.config, toplevel_keys)
         self.dir = pathlib.Path(self.config["dir"])
+        self.ref_pop = self.config["ref_pop"]
 
     def _getcfg_pop(self):
         pop = self.config.get("pop")
@@ -77,8 +85,14 @@ class Config():
                 with open(v) as f:
                     for line in f:
                         pop[k].append(line.strip())
+        if self.ref_pop not in pop:
+            raise ConfigError(
+                    f"{self.filename}: ref_pop {self.ref_pop} not among those "
+                    f"to be used for the genotype matrix: {pop}.")
         self.pop = pop
         self.vcf_samples = list(itertools.chain(*self.pop.values()))
+        # number of haplotypes
+        self.num_cols = 2 * len(self.vcf_samples)
 
     def _getcfg_sim(self):
         self.sim = self.config.get("sim")
@@ -97,17 +111,23 @@ class Config():
         for label, speclist in tranche.items():
             for modelspec in speclist:
                 model = sim.get_demog_model(modelspec)
-                pops = {p.id for p in model.populations}
+                pop2tsidx = {p.id: i for i, p in enumerate(model.populations)}
+                if self.pop2tsidx is None:
+                    self.pop2tsidx = pop2tsidx
+                elif pop2tsidx.items() != self.pop2tsidx.items():
+                    raise ConfigError(
+                            f"{self.filename} populations defined for {modelspec} "
+                            "do not match earlier modelspecs.")
                 for pop in self.pop.keys():
-                    if pop not in pops:
+                    if pop not in pop2tsidx:
                         raise ConfigError(
                                 f"{self.filename}: {pop} not found in {modelspec}. "
-                                f"Options are: {pops}")
+                                f"Options are: {list(pop2tsidx.keys())}")
         self.tranche = tranche
 
     def _getcfg_vcf(self):
         self.vcf = self.config.get("vcf")
-        if self.vcf is None or len(self.vcf) == 0:
+        if len(self.vcf) == 0:
             raise ConfigError(f"{self.filename}: no vcf defined.")
         vcf_keys = ["file", ]
         self._verify_keys_exist(self.vcf, vcf_keys, "vcf.")
@@ -125,11 +145,50 @@ class Config():
                 raise ConfigError(f"{fn}: file not found.")
         self.phasing = vcf.sample_phasing(self.file[0], self.vcf_samples)
 
+    def _getcfg_train(self):
+        train = self.config.get("train")
+        if len(train) == 0:
+            raise ConfigError(f"{self.filename}: no training details defined.")
+        train_keys = ["num_rows", "epochs", "batch_size", "model"]
+        self._verify_keys_exist(train, train_keys, "train.")
+        self.num_rows = train.get("num_rows")
+        self.train_epochs = train.get("epochs")
+        self.train_batch_size = train.get("batch_size")
+        self.nn_model = train.get("model")
+
+        nn_model_keys = {
+                "cnn": [
+                        "n_conv", "n_conv_filt", "filt_size_x", "filt_size_y",
+                        "n_dense", "dense_size"],
+                }
+        params = train.get(self.nn_model)
+        if params is None or self.nn_model not in nn_model_keys:
+            raise ConfigError(
+                    f"{self.filename}: train.model must be set to one of: "
+                    f"{list(nn_model_keys.keys())}")
+        self._verify_keys_exist(
+                params, nn_model_keys[self.nn_model], "train.{self.nn_model}")
+        self.nn_model_params = params
+
+    def _getcfg_tf(self):
+        tf = self.config.get("tf")
+        if tf is not None:
+            self.tf_devices = tf.get("devices")
+
     def sample_counts(self):
         """
         Haploid sample numbers for each population.
         """
         return {p: 2*len(v) for p, v in self.pop.items()}
+
+    def pop_indices(self):
+        """
+        Indices partitioning the populations in a genotype matrix.
+        """
+        indices = np.cumsum(list(self.sample_counts().values()))
+        # Record the starting indices.
+        indices = [0] + list(indices[:-1])
+        return dict(zip(self.pop.keys(), indices))
 
 
 if __name__ == "__main__":
