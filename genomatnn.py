@@ -78,7 +78,10 @@ def do_train(conf):
 def do_eval(conf):
     raise NotImplementedError("'eval' not yet implemented")
 
+
 dropped_coordinates = []
+
+
 def vcf_data_generator(
         coordinates, sample_list, min_seg_sites, max_missing, maf_thres,
         sequence_length, num_rows, rng):
@@ -114,7 +117,7 @@ def do_apply(conf):
     predictions = tfstuff.apply(conf, conf.nn_hdf5_file, vcf_data)
 
     # Remove the coordinates for which there was insufficient data.
-    filtered_coordinates = numpy.delete(coordinates, dropped_coordinates)
+    filtered_coordinates = np.delete(coordinates, dropped_coordinates)
 
     print("chrom", "start", "end", "pred", sep="\t")
     for (_, chrom, start, end), pred in zip(filtered_coordinates, predictions):

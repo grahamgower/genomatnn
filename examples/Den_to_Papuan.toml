@@ -25,7 +25,7 @@ min_allele_frequency = 0.05
 	"HomSap/PapuansOutOfAfrica_10J19/Sweep/Papuan",
 
 	# Skip this for now, as it's too compuatationally intensive
-	# to do many replicates for training. :-(	
+	# to do many replicates for training. :-(
 	#"HomSap/PapuansOutOfAfrica_10J19/DFE",
 ]
 
@@ -86,7 +86,7 @@ batch_size = 128
 # chromosome by the `step` size defined here. For non-overlapping windows,
 # set to the same value as the sequence_length.
 step = 20_000  # 20 kb
-# Exclude sites with more genotypes missing than this threshold.
+# Exclude sites with more genotypes missing than this proportion.
 max_missing_genotypes = 0.1
 # Exclude windows with fewer segregating sites than this.
 min_seg_sites = 20
