@@ -1,7 +1,12 @@
 # Working directory, for simulation output, trained networks, plots, etc.
-dir = "trees2"
+dir = "Den_to_Papuan"
 # Reference population. Must be one of the defined populations below.
 ref_pop = "DenA"
+
+# Minor Allele Frequency (MAF) threshold. 
+# Both training data and empirical data will be filtered to exclude
+# sites with MAF < maf_threshold.
+maf_threshold = 0.05
 
 [sim]
 sequence_length = 100_000  # 100 kb
@@ -11,7 +16,7 @@ sequence_length = 100_000  # 100 kb
 min_allele_frequency = 0.05
 
 [sim.tranche]
-# The lables and modelspec(s) for each tranche. The network will be trained to
+# The labels and modelspec(s) for each tranche. The network will be trained to
 # classify data as coming from one of these tranches. Each tranche consists of
 # a list of simulation modelspecs.
 # Only two tranches are supported.
@@ -20,7 +25,7 @@ min_allele_frequency = 0.05
 	"HomSap/PapuansOutOfAfrica_10J19/Sweep/Papuan",
 
 	# Skip this for now, as it's too compuatationally intensive
-	# to do many replicates for training. :-(
+	# to do many replicates for training. :-(	
 	#"HomSap/PapuansOutOfAfrica_10J19/DFE",
 ]
 
@@ -70,6 +75,25 @@ filt_size_y = 4  # spanning across individuals
 n_dense = 0
 dense_size = 0
 
+[eval]
+# Additional modelspecs against which the trained model will be evaluated.
+"DFE" = "HomSap/PapuansOutOfAfrica_10J19/DFE"
+
+[apply]
+batch_size = 128
+# The trained model is applied to windows of the vcf of the same size
+# as the sequence_length above. Windows are chosen by moving along a
+# chromosome by the `step` size defined here. For non-overlapping windows,
+# set to the same value as the sequence_length.
+step = 20_000  # 20 kb
+# Exclude sites with more genotypes missing than this threshold.
+max_missing_genotypes = 0.1
+# Exclude windows with fewer segregating sites than this.
+min_seg_sites = 20
+
 [tf]
+# Tensorflow will use all available GPU devices by default. To only use
+# a subset of your devices, specify them here.
 devices = ["/gpu:0", "/gpu:1", "/gpu:2"]
 #devices = ["/gpu:0", "/gpu:1", "/gpu:2", "/gpu:3", "/gpu:4"]
+

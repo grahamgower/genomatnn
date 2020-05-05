@@ -222,12 +222,25 @@ def train(conf, train_data, train_labels, val_data, val_labels):
     model.save(str(save_file))
 
 
+def apply(conf, model_file, x):
+    tf_config(conf.parallelism)
+    strategy = tf.distribute.MirroredStrategy(devices=conf.tf_devices)
+    model = models.load_model(conf.nn_hdf5_file)
+    with strategy.scope():
+        y = model.predict(
+                x, verbose=1, max_queue_size=10, workers=1,
+                use_multiprocessing=False)
+    return y
+
+
 if __name__ == "__main__":
     import sim
     import convert
     import config
     import tempfile
+    import random
 
+    rng = random.Random()
     config.logger_setup("DEBUG")
     tf_config(4)
 
@@ -241,7 +254,7 @@ if __name__ == "__main__":
         ts_file = f"{tmpdir}/foo.trees"
         ts.dump(ts_file)
         mat = convert.ts_genotype_matrix(
-                ts_file, pop_indices, 0, num_rows, num_inds)
+                ts_file, pop_indices, 0, num_rows, num_inds, 0.05, rng)
     mat = mat[np.newaxis, :, :, np.newaxis]
     data_shape = mat.shape
     assert data_shape[1:3] == (num_rows, num_inds)

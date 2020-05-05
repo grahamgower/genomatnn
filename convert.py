@@ -30,7 +30,8 @@ def _reorder_and_sort(A, counts, from_, to, ref_pop):
 
     # Average over the columns of the ref population. If the genotype
     # matrix were not resized, these would be the ref pop's allele frequencies.
-    a, b = from_[ref_pop], from_[ref_pop] + counts[ref_pop]
+    a = from_[ref_pop]
+    b = a + counts[ref_pop]
     ref_vec = np.mean(A[:, a:b], axis=1, keepdims=True)
 
     B = np.empty_like(A)
@@ -57,19 +58,40 @@ def ts_pop_counts_indices(ts):
     return counts, dict(zip(counts.keys(), indices))
 
 
-def _ts2mat(ts, num_rows):
+def _ts2mat(ts, num_rows, maf_thres, rng, exclude_mut_with_metadata=True):
     """
     Extract genotype matrix from ``ts``, and resize to ``num_rows`` rows.
     """
+    ac_thres = maf_thres * ts.num_samples
     A = np.zeros((num_rows, ts.num_samples), dtype=np.int8)
     sequence_length = ts.sequence_length
     for variant in ts.variants():
+        if exclude_mut_with_metadata:
+            # We wish to exclude the mutation added in by SLiM that's under
+            # selection in our selection scenarios. It's possible that a CNN
+            # could learn to classify based on this mutation alone, which
+            # is problematic given that we added it in a biologically
+            # unrealistic way (i.e. at a fixed position).
+            # XXX: need a less fragile detection/removal of the drawn mutation.
+            for mut in variant.site.mutations:
+                if len(mut.metadata) > 0:
+                    continue
+        genotypes = variant.genotypes
+        allele_counts = collections.Counter(genotypes)
+        if allele_counts[0] < ac_thres or allele_counts[1] < ac_thres:
+            continue
+        # Polarise 0 and 1 in genotype matrix by major allele frequency.
+        # If allele counts are the same, randomly choose a major allele.
+        if allele_counts[1] > allele_counts[0] or \
+                (allele_counts[1] == allele_counts[0] and rng.random() > 0.5):
+            genotypes = genotypes ^ 1
         j = int(num_rows * variant.site.position / sequence_length)
-        A[j, :] += variant.genotypes
+        A[j, :] += genotypes
     return A
 
 
-def ts_genotype_matrix(ts_file, pop_indices, ref_pop, num_rows, num_cols):
+def ts_genotype_matrix(
+        ts_file, pop_indices, ref_pop, num_rows, num_cols, maf_thres, rng):
     """
     Return a genotype matrix from ``ts``, shrunk to ``num_rows``,
     with populations ordered according to ``pop_indices`` and haplotypes
@@ -83,7 +105,7 @@ def ts_genotype_matrix(ts_file, pop_indices, ref_pop, num_rows, num_cols):
     """
     assert ref_pop in pop_indices
     ts = tskit.load(ts_file)
-    A = _ts2mat(ts, num_rows)
+    A = _ts2mat(ts, num_rows, maf_thres, rng)
     ts_counts, ts_pop_indices = ts_pop_counts_indices(ts)
     if sum(ts_counts.values()) != num_cols:
         raise RuntimeError(
@@ -94,7 +116,7 @@ def ts_genotype_matrix(ts_file, pop_indices, ref_pop, num_rows, num_cols):
 
 def _prepare_training_data(
         path, tranche, pop_indices, ref_pop, num_rows, num_cols, rng,
-        parallelism, train_frac=0.9):
+        parallelism, maf_thres, train_frac=0.9):
     """
     Load and label the data, then split into training and validation sets.
     """
@@ -126,12 +148,13 @@ def _prepare_training_data(
             f"Converting {n} tree sequence files to genotype matrices with "
             f"shape ({num_rows}, {num_cols})...")
 
+    # XXX: parallelism here breaks fixed-seed rng determinism.
     gt_func = functools.partial(
             ts_genotype_matrix, pop_indices=pop_indices, ref_pop=ref_pop,
-            num_rows=num_rows, num_cols=num_cols)
+            num_rows=num_rows, num_cols=num_cols, maf_thres=maf_thres, rng=rng)
 
-    with concurrent.futures.ProcessPoolExecutor(parallelism, chunksize=10) as ex:
-        data = list(ex.map(gt_func, files))
+    with concurrent.futures.ProcessPoolExecutor(parallelism) as ex:
+        data = list(ex.map(gt_func, files, chunksize=10))
     data = np.array(data, dtype=np.int8)
 
     train_data, val_data = data[:n_train], data[n_train:]
@@ -168,7 +191,7 @@ def _check_data(data, tranche, num_rows, num_cols):
 
 def prepare_training_data(
         path, tranche, pop_indices, ref_pop, num_rows, num_cols, rng,
-        parallelism, cache):
+        parallelism, maf_thres, cache):
     """
     Wrapper for _prepare_training_data() that maintains an on-disk zarr cache.
     """
@@ -181,7 +204,7 @@ def prepare_training_data(
         # Data are not cached, load them up.
         data = _prepare_training_data(
                 path, tranche, pop_indices, ref_pop, num_rows, num_cols, rng,
-                parallelism)
+                parallelism, maf_thres)
         logger.debug(f"Caching data to {cache}.")
         data_kwargs = {k: zarr.array(v, chunks=False)
                        for k, v in zip(cache_keys, data)}

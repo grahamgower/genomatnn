@@ -2,6 +2,7 @@ import random
 import itertools
 import subprocess
 import collections
+import tempfile
 
 import numpy as np
 
@@ -10,32 +11,37 @@ def sample_phasing(vcf, sample_list):
     """
     Determine if the genotypes in ``vcf`` are phased for the ``sample_list``.
     """
-    cmd = ["bcftools", "query",
-           # XXX: if the sample list is too long, this could exceed OS limits.
-           "-s", ",".join(sample_list),
-           "-f", "[%GT\t]\\n",
-           vcf]
     phasing_unknown = set(range(len(sample_list)))
     phasing = [True] * len(sample_list)
 
-    with subprocess.Popen(
-            cmd, bufsize=1, text=True,
-            stdout=subprocess.PIPE, stderr=subprocess.PIPE) as p:
-        for line in p.stdout:
-            gt_str_list = line.split()
-            for i, gt_str in enumerate(gt_str_list):
-                if gt_str[0] == ".":
-                    # phasing unknown
-                    continue
-                if gt_str[1] == "/":
-                    phasing[i] = False
-                elif gt_str[1] == "|":
-                    phasing[i] = True
-                phasing_unknown.discard(i)
-            if len(phasing_unknown) == 0:
-                break
-        p.terminate()
-        stderr = p.stderr.read()
+    with tempfile.TemporaryDirectory() as tmpdir:
+        samples_file = f"{tmpdir}/samples.txt"
+        with open(samples_file, "w") as f:
+            print(*sample_list, file=f, sep="\n")
+
+        cmd = ["bcftools", "query",
+               "-S", samples_file,
+               "-f", "[%GT\t]\\n",
+               vcf]
+
+        with subprocess.Popen(
+                cmd, bufsize=1, text=True,
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE) as p:
+            for line in p.stdout:
+                gt_str_list = line.split()
+                for i, gt_str in enumerate(gt_str_list):
+                    if gt_str[0] == ".":
+                        # phasing unknown
+                        continue
+                    if gt_str[1] == "/":
+                        phasing[i] = False
+                    elif gt_str[1] == "|":
+                        phasing[i] = True
+                    phasing_unknown.discard(i)
+                if len(phasing_unknown) == 0:
+                    break
+            p.terminate()
+            stderr = p.stderr.read()
 
     if stderr:
         raise RuntimeError(f"{vcf}: {stderr}")
@@ -44,8 +50,42 @@ def sample_phasing(vcf, sample_list):
     return phasing
 
 
+def contig_lengths(vcf):
+    contigs = []
+    cmd = ["bcftools", "view", "-h", vcf]
+    with subprocess.Popen(
+            cmd, bufsize=1, text=True,
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE) as p:
+        for line in p.stdout:
+            if line.startswith("##contig="):
+                line = line.rstrip()
+                line = line[len("##contig=<"): -1]
+                cline = dict()
+                for field in line.split(","):
+                    try:
+                        key, val = field.split("=")
+                    except ValueError:
+                        print(f"{vcf}: line={line}")
+                        raise
+                    cline[key] = val
+                if "ID" not in cline or "length" not in cline:
+                    raise ValueError(f"{vcf}: parse error: line={line}")
+                try:
+                    length = int(cline["length"])
+                except ValueError:
+                    print(f"{vcf}: line={line}")
+                    raise
+                contigs.append((cline["ID"], length))
+        p.terminate()
+        stderr = p.stderr.read()
+
+    if stderr:
+        raise RuntimeError(f"{vcf}: {stderr}")
+    return contigs
+
+
 def vcf2mat(
-        vcf, samples, chrom, start, end, rng,
+        vcf, samples_file, chrom, start, end, rng,
         max_missing_thres=None, maf_thres=None, unphase=True):
     """
     Extract a genotype matrix from ``vcf`` for the samples in file ``samples``
@@ -61,15 +101,13 @@ def vcf2mat(
     0 and 1 coding is randomly assigned.
     """
 
-    cmd = ["bcftools", "query"]
-    if samples is not None:
-        cmd.extend(["-S", samples])
-    cmd.extend([
-            "-r", f"{chrom}:{start}-{end}",
-            "-e", "TYPE!='snp'",  # Exclude non-SNPs.
-            "-f", "%POS\\t%ALT[\\t%GT]\\n",
-            vcf
-            ])
+    cmd = ["bcftools", "query",
+           "-S", samples_file,
+           "-r", f"{chrom}:{start}-{end}",
+           "-e", "TYPE!='snp'",  # Exclude non-SNPs.
+           "-f", "%POS\\t%ALT[\\t%GT]\\n",
+           vcf
+           ]
 
     def g2i(gt_str):
         """
@@ -86,7 +124,9 @@ def vcf2mat(
     pos = []
     gt = []
 
-    with subprocess.Popen(cmd, bufsize=1, text=True, stdout=subprocess.PIPE) as p:
+    with subprocess.Popen(
+            cmd, bufsize=1, text=True,
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE) as p:
         for line in p.stdout:
             fields = line.split()
             _pos = int(fields[0])
@@ -123,6 +163,12 @@ def vcf2mat(
             pos.append(_pos)
             gt.append(_gt)
 
+        p.terminate()
+        stderr = p.stderr.read()
+
+    if stderr:
+        raise RuntimeError(f"{vcf}: {stderr}")
+
     pos = np.array(pos, dtype=np.uint32)
     gt = np.array(gt, dtype=np.int8)
     return pos, gt
@@ -136,11 +182,34 @@ def resize(pos, gt, sequence_length, num_rows):
     position by retaining their relative offset in (0, sequence_length),
     and summing values with the same destination offset.
     """
-    m = np.zeros((num_rows, gt.shape[1]), dtype=gt.dtype)
+    A = np.zeros((num_rows, gt.shape[1]), dtype=gt.dtype)
     for _pos, _gt in zip(pos, gt):
         j = int(num_rows * _pos / sequence_length)
-        np.add(m[j, :], _gt, out=m[j, :], where=_gt != -1)
-    return m
+        np.add(A[j, :], _gt, out=A[j, :], where=_gt != -1)
+    return A
+
+
+def coordinates(vcf_files, chr_list, window, step):
+    """
+    Return chrom:start-end coordinates for the given vcf_files, chr_list,
+    window, and step size.
+    """
+    assert step <= window
+    coords = []
+    last_vcf = None
+    for vcf, chrom in zip(vcf_files, chr_list):
+        if vcf != last_vcf:
+            contigs = dict(contig_lengths(vcf))
+        last_vcf = vcf
+        chrlen = contigs.get(str(chrom))
+        if chrlen is None:
+            raise RuntimeError(f"{vcf}: couldn't find chromosome '{chrom}'")
+
+        starts = np.arange(0, chrlen-window, step)
+        ends = starts + window
+        coords.extend((vcf, chrom, start, end)
+                      for start, end in zip(starts, ends))
+    return coords
 
 
 def parse_args():

@@ -7,10 +7,14 @@ import itertools
 import functools
 import concurrent.futures
 import random
+import tempfile
+
+import numpy as np
 
 import config
-import sim
 import convert
+import sim
+import vcf
 
 
 _module_name = "genomatnn"
@@ -32,6 +36,7 @@ def _sim_wrapper(args, conf=None):
 
 
 def do_sim(conf):
+    parallelism = conf.parallelism if conf.parallelism > 0 else os.cpu_count()
     modelspecs = list(itertools.chain(*conf.tranche.values()))
     sim_func = functools.partial(_sim_wrapper, conf=conf)
     rng = random.Random(conf.seed)
@@ -41,21 +46,22 @@ def do_sim(conf):
             for spec in modelspecs:
                 yield spec, rng.randrange(1, 2**32)
 
-    with concurrent.futures.ProcessPoolExecutor(conf.parallelism) as ex:
+    with concurrent.futures.ProcessPoolExecutor(parallelism) as ex:
         for _ in ex.map(sim_func, sim_func_arg_generator()):
             pass
 
 
 def do_train(conf):
     rng = random.Random(conf.seed)
-    cache = conf.dir / "zarr.cache"
+    cache = conf.dir / f"zarrcache_{conf.num_rows}-rows"
     # Translate ref_pop and pop_indices to tree sequence population indices.
     ref_pop = conf.pop2tsidx[conf.ref_pop]
     pop_indices = {conf.pop2tsidx[pop]: idx
                    for pop, idx in conf.pop_indices().items()}
+    parallelism = conf.parallelism if conf.parallelism > 0 else os.cpu_count()
     data = convert.prepare_training_data(
             conf.dir, conf.tranche, pop_indices, ref_pop, conf.num_rows,
-            conf.num_cols, rng, conf.parallelism, cache)
+            conf.num_cols, rng, parallelism, conf.maf_threshold, cache)
     train_data, train_labels, val_data, val_labels = data
     n_train = train_data.shape[0]
     n_val = val_data.shape[0]
@@ -69,8 +75,50 @@ def do_train(conf):
     tfstuff.train(conf, train_data, train_labels, val_data, val_labels)
 
 
+def do_eval(conf):
+    raise NotImplementedError("'eval' not yet implemented")
+
+dropped_coordinates = []
+def vcf_data_generator(
+        coordinates, sample_list, min_seg_sites, max_missing, maf_thres,
+        sequence_length, num_rows, rng):
+    with tempfile.TemporaryDirectory() as tmpdir:
+        samples_file = f"{tmpdir}/samples.txt"
+        with open(samples_file, "w") as f:
+            print(*sample_list, file=f, sep="\n")
+        for i, (vcf_file, chrom, start, end) in enumerate(coordinates):
+            pos, A = vcf.vcf2mat(
+                    vcf_file, samples_file, chrom, start, end, rng,
+                    max_missing_thres=max_missing, maf_thres=maf_thres)
+            if len(pos) < min_seg_sites:
+                dropped_coordinates.append(i)
+                continue
+            relative_pos = pos - start
+            B = vcf.resize(relative_pos, A, sequence_length, num_rows)
+            yield (B[np.newaxis, :, :, np.newaxis], )
+
+
 def do_apply(conf):
-    raise NotImplementedError("'apply' not yet implemented")
+    rng = random.Random(conf.seed)
+    logger.debug("Generating window coordinates for vcf data...")
+    coordinates = vcf.coordinates(
+            conf.file, conf.chr, conf.sequence_length, conf.apply["step"])
+    logger.debug("Setting up data generator...")
+    vcf_data = vcf_data_generator(
+            coordinates, conf.vcf_samples, conf.apply["min_seg_sites"],
+            conf.apply["max_missing_genotypes"], conf.maf_threshold,
+            conf.sequence_length, conf.num_rows, rng)
+
+    logger.debug("Applying tensorflow to vcf data...")
+    import tfstuff
+    predictions = tfstuff.apply(conf, conf.nn_hdf5_file, vcf_data)
+
+    # Remove the coordinates for which there was insufficient data.
+    filtered_coordinates = numpy.delete(coordinates, dropped_coordinates)
+
+    print("chrom", "start", "end", "pred", sep="\t")
+    for (_, chrom, start, end), pred in zip(filtered_coordinates, predictions):
+        print(chrom, start, end, pred, sep="\t")
 
 
 def parse_args():
@@ -83,20 +131,20 @@ def parse_args():
     sim_parser.set_defaults(func=do_sim)
     train_parser = subparsers.add_parser("train", help="Train a CNN.")
     train_parser.set_defaults(func=do_train)
+    eval_parser = subparsers.add_parser("eval", help="Evaluate trained CNN.")
+    eval_parser.set_defaults(func=do_eval)
     apply_parser = subparsers.add_parser("apply", help="Apply trained CNN.")
     apply_parser.set_defaults(func=do_apply)
 
     # Arguments common to all subcommands.
-    for i, p in enumerate((sim_parser, train_parser, apply_parser)):
+    for i, p in enumerate((sim_parser, train_parser, eval_parser, apply_parser)):
 
-        parallelism_default = 0
-        if i == 0:
-            parallelism_default = os.cpu_count()
         p.add_argument(
-                "-p", "--parallelism", default=parallelism_default, type=int,
+                "-p", "--parallelism", default=0, type=int,
                 help="Number of processes or threads to use for parallel things. "
                      "E.g. simultaneous simulations, or the number of threads "
                      "used by tensorflow when running on CPU. "
+                     "If set to zero, os.cpu_count() is used. "
                      "[default=%(default)s].")
         p.add_argument(
                 "-s", "--seed", default=random.randrange(1, 2**32), type=int,
@@ -118,6 +166,14 @@ def parse_args():
             "-c", "--convert-only", default=False, action="store_true",
             help="Convert simulated tree sequences into genotype matrices "
                  "ready for training, and then exit.")
+
+    eval_parser.add_argument(
+            "nn_hdf5_file", metavar="nn.hdf5", type=str,
+            help="The trained nerual network model to evaulate.")
+
+    apply_parser.add_argument(
+            "nn_hdf5_file", metavar="nn.hdf5", type=str,
+            help="The trained nerual network model to apply.")
 
     args = parser.parse_args()
     args.conf = config.Config(args.conf)
@@ -144,6 +200,10 @@ def parse_args():
         args.conf.num_reps = args.num_reps
     elif args.subcommand == "train":
         args.conf.convert_only = args.convert_only
+    elif args.subcommand == "eval":
+        args.conf.nn_hdf5_file = args.nn_hdf5_file
+    elif args.subcommand == "apply":
+        args.conf.nn_hdf5_file = args.nn_hdf5_file
     args.conf.parallelism = args.parallelism
     args.conf.seed = args.seed
     args.conf.verbose = args.verbose

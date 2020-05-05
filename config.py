@@ -45,13 +45,16 @@ class Config():
         self.filename = filename
         self.dir = None
         self.ref_pop = None
+        self.maf_threshold = None
         self.num_rows = None
-        self.num_cols = None
+        self.num_cols = None  # XXX: remove this in favour of num_haplotypes
+        self.num_haplotypes = None
         self.pop = None
         self.sequence_length = None
         self.min_allele_frequency = None
         self.vcf_samples = None
-        self.vcf_tranche = None
+        self.tranche = None
+        self.chr = None
         self.phasing = None
         self.pop2tsidx = None
         self.tf_devices = None
@@ -63,6 +66,12 @@ class Config():
         self._getcfg_sim()
         self._getcfg_vcf()
         self._getcfg_train()
+        self._getcfg_eval()
+        self._getcfg_apply()
+        self._getcfg_tf()
+
+        # TODO: Add introspection to check required attributes are set.
+        #       Check types? Use attrs somehow?
 
     def _verify_keys_exist(self, dict_, keys, pfx=""):
         for k in keys:
@@ -70,10 +79,13 @@ class Config():
                 raise ConfigError(f"{self.filename}: {pfx}{k} not defined.")
 
     def _getcfg_toplevel(self):
-        toplevel_keys = ["dir", "ref_pop", "pop", "sim", "vcf", "train"]
+        toplevel_keys = [
+                "dir", "ref_pop", "maf_threshold", "pop", "sim", "vcf",
+                "train", "apply"]
         self._verify_keys_exist(self.config, toplevel_keys)
         self.dir = pathlib.Path(self.config["dir"])
         self.ref_pop = self.config["ref_pop"]
+        self.maf_threshold = self.config["maf_threshold"]
 
     def _getcfg_pop(self):
         pop = self.config.get("pop")
@@ -91,8 +103,8 @@ class Config():
                     f"to be used for the genotype matrix: {pop}.")
         self.pop = pop
         self.vcf_samples = list(itertools.chain(*self.pop.values()))
-        # number of haplotypes
-        self.num_cols = 2 * len(self.vcf_samples)
+        self.num_haplotypes = 2 * len(self.vcf_samples)
+        self.num_cols = self.num_haplotypes  # XXX: remove this
 
     def _getcfg_sim(self):
         self.sim = self.config.get("sim")
@@ -129,17 +141,14 @@ class Config():
         self.vcf = self.config.get("vcf")
         if len(self.vcf) == 0:
             raise ConfigError(f"{self.filename}: no vcf defined.")
-        vcf_keys = ["file", ]
+        vcf_keys = ["file", "chr"]
         self._verify_keys_exist(self.vcf, vcf_keys, "vcf.")
         file_ = self.vcf.get("file")
-        chr_ = self.vcf.get("chr")
-        if chr_ is None:
-            self.file = [pathlib.Path(file_)]
-        else:
-            self.file = []
-            for c in chr_:
-                fn = string.Template(file_).substitute(chr=c)
-                self.file.append(pathlib.Path(fn))
+        self.chr = self.vcf.get("chr")
+        self.file = []
+        for c in self.chr:
+            fn = string.Template(file_).substitute(chr=c)
+            self.file.append(pathlib.Path(fn))
         for fn in self.file:
             if not fn.exists():
                 raise ConfigError(f"{fn}: file not found.")
@@ -170,6 +179,16 @@ class Config():
                 params, nn_model_keys[self.nn_model], "train.{self.nn_model}")
         self.nn_model_params = params
 
+    def _getcfg_eval(self):
+        self.eval = self.config.get("eval")
+        if self.eval is not None:
+            pass
+
+    def _getcfg_apply(self):
+        self.apply = self.config.get("apply")
+        apply_keys = ["step", "batch_size", "max_missing_genotypes", "min_seg_sites"]
+        self._verify_keys_exist(self.apply, apply_keys, "apply.")
+
     def _getcfg_tf(self):
         tf = self.config.get("tf")
         if tf is not None:
@@ -179,6 +198,8 @@ class Config():
         """
         Haploid sample numbers for each population.
         """
+        # TODO: Use self.phasing here, and fix the tree sequence genotype
+        #       matrices to match.
         return {p: 2*len(v) for p, v in self.pop.items()}
 
     def pop_indices(self):
