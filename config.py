@@ -57,7 +57,6 @@ class Config():
         self.chr = None
         self.phasing = None
         self.pop2tsidx = None
-        self.tf_devices = None
 
         # Read in toml file and fill in the attributes.
         self.config = toml.load(self.filename)
@@ -68,7 +67,6 @@ class Config():
         self._getcfg_train()
         self._getcfg_eval()
         self._getcfg_apply()
-        self._getcfg_tf()
 
         # TODO: Add introspection to check required attributes are set.
         #       Check types? Use attrs somehow?
@@ -188,11 +186,6 @@ class Config():
         self.apply = self.config.get("apply")
         apply_keys = ["step", "batch_size", "max_missing_genotypes", "min_seg_sites"]
         self._verify_keys_exist(self.apply, apply_keys, "apply.")
-
-    def _getcfg_tf(self):
-        tf = self.config.get("tf")
-        if tf is not None:
-            self.tf_devices = tf.get("devices")
 
     def sample_counts(self):
         """

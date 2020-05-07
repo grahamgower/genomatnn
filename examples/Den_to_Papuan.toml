@@ -46,7 +46,8 @@ AI = [
 # network. Chromosomes may be specified as integers or strings.
 # Only the first vcf will be used to determining phasing.
 # Only diploid autosomes are supported.
-chr = [ 22 ]
+chr = [ 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19,
+	20, 21, 22 ]
 file = "misc/vcf/HGDP.1000g.archaic.${chr}.bcf"
 
 [pop]
@@ -80,7 +81,7 @@ dense_size = 0
 "DFE" = "HomSap/PapuansOutOfAfrica_10J19/DFE"
 
 [apply]
-batch_size = 128
+batch_size = 256
 # The trained model is applied to windows of the vcf of the same size
 # as the sequence_length above. Windows are chosen by moving along a
 # chromosome by the `step` size defined here. For non-overlapping windows,
@@ -90,10 +91,3 @@ step = 20_000  # 20 kb
 max_missing_genotypes = 0.1
 # Exclude windows with fewer segregating sites than this.
 min_seg_sites = 20
-
-[tf]
-# Tensorflow will use all available GPU devices by default. To only use
-# a subset of your devices, specify them here.
-devices = ["/gpu:0", "/gpu:1", "/gpu:2"]
-#devices = ["/gpu:0", "/gpu:1", "/gpu:2", "/gpu:3", "/gpu:4"]
-

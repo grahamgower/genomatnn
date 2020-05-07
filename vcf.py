@@ -189,10 +189,14 @@ def resize(pos, gt, sequence_length, num_rows):
     return A
 
 
-def coordinates(vcf_files, chr_list, window, step):
+def coordinates(vcf_files, chr_list, window, step, one_based=True, closed=True):
     """
     Return chrom:start-end coordinates for the given vcf_files, chr_list,
     window, and step size.
+    The default one-based closed intervals are compatible with `bcftools -r`,
+    so the first two intervals are chrom:1-window, chrom:(step+1)-(window+step).
+    For BED-like intervals (one_based=False, closed=False), we instead get
+    chrom:0-window, chrom:step-(window+step).
     """
     assert step <= window
     coords = []
@@ -205,8 +209,8 @@ def coordinates(vcf_files, chr_list, window, step):
         if chrlen is None:
             raise RuntimeError(f"{vcf}: couldn't find chromosome '{chrom}'")
 
-        starts = np.arange(0, chrlen-window, step)
-        ends = starts + window
+        starts = np.arange(0, chrlen-window, step) + (1*one_based)
+        ends = starts + window - (1*closed)
         coords.extend((vcf, chrom, start, end)
                       for start, end in zip(starts, ends))
     return coords

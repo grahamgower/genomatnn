@@ -36,10 +36,13 @@ def tf_config(n_threads):
     Set fixed number of CPU threads in CPU-only operation.
     Wow, tensorflow, why is this all so hard?
     """
-    phys_gpus = tf.config.list_physical_devices("GPU")
-    if n_threads > 0 and len(phys_gpus) > 0:
-        logger.warning("Configuring tensorflow for CPU-only use.")
-        tf.config.set_visible_devices([], "GPU")
+    if n_threads > 0:
+        if len(tf.config.list_physical_devices("GPU")) > 0:
+            logger.warning("Configuring tensorflow for CPU-only use.")
+        # tf.config.set_visible_devices([], "GPU") doesn't leave GPUs
+        # available for other processes. Setting CUDA_VISIBLE_DEVICES="" is the
+        # only reliable way to stop tensorflow from locking GPUs.
+        os.environ["CUDA_VISIBLE_DEVICES"] = ""
 
     logger.debug(f"Configuring tensorflow to use {n_threads} CPUs")
     tf.config.threading.set_intra_op_parallelism_threads(n_threads)
@@ -208,7 +211,7 @@ def train(conf, train_data, train_labels, val_data, val_labels):
     train_data = np.expand_dims(train_data, axis=-1)
     val_data = np.expand_dims(val_data, axis=-1)
 
-    strategy = tf.distribute.MirroredStrategy(devices=conf.tf_devices)
+    strategy = tf.distribute.MirroredStrategy()
     with strategy.scope():
         model = get_nn_model(
                 conf.nn_model, train_data.shape[1:], 1, conf.nn_model_params)
@@ -220,17 +223,7 @@ def train(conf, train_data, train_labels, val_data, val_labels):
             verbose=1)
     save_file = conf.dir / f"{conf.nn_model}_{conf.seed}.hdf5"
     model.save(str(save_file))
-
-
-def apply(conf, model_file, x):
-    tf_config(conf.parallelism)
-    strategy = tf.distribute.MirroredStrategy(devices=conf.tf_devices)
-    model = models.load_model(conf.nn_hdf5_file)
-    with strategy.scope():
-        y = model.predict(
-                x, verbose=1, max_queue_size=10, workers=1,
-                use_multiprocessing=False)
-    return y
+    return history
 
 
 if __name__ == "__main__":

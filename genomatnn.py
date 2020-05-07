@@ -79,49 +79,85 @@ def do_eval(conf):
     raise NotImplementedError("'eval' not yet implemented")
 
 
-dropped_coordinates = []
+def vcf_get1(
+        args, samples_file=None, sequence_length=None, num_rows=None,
+        min_seg_sites=None, max_missing=None, maf_thres=None):
+    (vcf_file, chrom, start, end), seed = args
+    rng = random.Random(seed)
+    pos, A = vcf.vcf2mat(
+            vcf_file, samples_file, chrom, start, end, rng,
+            max_missing_thres=max_missing, maf_thres=maf_thres)
+    if len(pos) < min_seg_sites:
+        return None
+    relative_pos = pos - start
+    A = vcf.resize(relative_pos, A, sequence_length, num_rows)
+    return A[np.newaxis, :, :, np.newaxis]
 
 
-def vcf_data_generator(
+def vcf_batch_generator(
         coordinates, sample_list, min_seg_sites, max_missing, maf_thres,
-        sequence_length, num_rows, rng):
+        sequence_length, num_rows, rng, parallelism, batch_size):
+    icoordinates = iter(coordinates)
     with tempfile.TemporaryDirectory() as tmpdir:
         samples_file = f"{tmpdir}/samples.txt"
         with open(samples_file, "w") as f:
             print(*sample_list, file=f, sep="\n")
-        for i, (vcf_file, chrom, start, end) in enumerate(coordinates):
-            pos, A = vcf.vcf2mat(
-                    vcf_file, samples_file, chrom, start, end, rng,
-                    max_missing_thres=max_missing, maf_thres=maf_thres)
-            if len(pos) < min_seg_sites:
-                dropped_coordinates.append(i)
-                continue
-            relative_pos = pos - start
-            B = vcf.resize(relative_pos, A, sequence_length, num_rows)
-            yield (B[np.newaxis, :, :, np.newaxis], )
+
+        vcf_get_func = functools.partial(
+                vcf_get1, samples_file=samples_file,
+                sequence_length=sequence_length, num_rows=num_rows,
+                min_seg_sites=min_seg_sites,
+                max_missing=max_missing, maf_thres=maf_thres)
+
+        with concurrent.futures.ProcessPoolExecutor(parallelism) as ex:
+            while True:
+                batch_coords = list(itertools.islice(icoordinates, batch_size))
+                if len(batch_coords) == 0:
+                    break
+                seeds = [rng.randrange(1, 2**32) for _ in batch_coords]
+                pred_coords = []
+                B = []
+                map_res = ex.map(vcf_get_func, zip(batch_coords, seeds))
+                for coords, A in zip(batch_coords, map_res):
+                    if A is None:
+                        continue
+                    pred_coords.append(coords)
+                    B.append(A)
+                if len(pred_coords) > 0:
+                    yield pred_coords, np.concatenate(B)
 
 
 def do_apply(conf):
+    # XXX: each part of the input vcf is loaded window/step times.
     rng = random.Random(conf.seed)
     logger.debug("Generating window coordinates for vcf data...")
     coordinates = vcf.coordinates(
             conf.file, conf.chr, conf.sequence_length, conf.apply["step"])
     logger.debug("Setting up data generator...")
-    vcf_data = vcf_data_generator(
+    parallelism = conf.parallelism if conf.parallelism > 0 else os.cpu_count()
+    vcf_batch_gen = vcf_batch_generator(
             coordinates, conf.vcf_samples, conf.apply["min_seg_sites"],
             conf.apply["max_missing_genotypes"], conf.maf_threshold,
-            conf.sequence_length, conf.num_rows, rng)
+            conf.sequence_length, conf.num_rows, rng, parallelism,
+            conf.apply["batch_size"])
 
     logger.debug("Applying tensorflow to vcf data...")
     import tfstuff
-    predictions = tfstuff.apply(conf, conf.nn_hdf5_file, vcf_data)
+    import tensorflow as tf
+    from tensorflow.keras import models
+    tfstuff.tf_config(conf.parallelism)
+    model = models.load_model(conf.nn_hdf5_file)
+    strategy = tf.distribute.MirroredStrategy()
 
-    # Remove the coordinates for which there was insufficient data.
-    filtered_coordinates = np.delete(coordinates, dropped_coordinates)
+    label = list(conf.tranche.keys())[1]
 
-    print("chrom", "start", "end", "pred", sep="\t")
-    for (_, chrom, start, end), pred in zip(filtered_coordinates, predictions):
-        print(chrom, start, end, pred, sep="\t")
+    print("chrom", "from", "to", f"Pr({label})", sep="\t")
+    with strategy.scope():
+        for coords, vcf_data in vcf_batch_gen:
+            predictions = model.predict_on_batch(vcf_data)
+            for (_, chrom, start, end), pred in zip(coords, predictions):
+                printable_pred = [format(p, ".8f") for p in pred]
+                print(chrom, start, end, *printable_pred, sep="\t")
 
 
 def parse_args():
