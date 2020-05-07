@@ -4,3 +4,4 @@ stdpopsim
 zarr
 toml
 tensorflow
+matplotlib

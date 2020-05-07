@@ -15,6 +15,7 @@ import config
 import convert
 import sim
 import vcf
+import plots
 
 
 _module_name = "genomatnn"
@@ -127,7 +128,7 @@ def vcf_batch_generator(
                     yield pred_coords, np.concatenate(B)
 
 
-def do_apply(conf):
+def get_predictions(conf, pred_file):
     # XXX: each part of the input vcf is loaded window/step times.
     rng = random.Random(conf.seed)
     logger.debug("Generating window coordinates for vcf data...")
@@ -150,14 +151,21 @@ def do_apply(conf):
     strategy = tf.distribute.MirroredStrategy()
 
     label = list(conf.tranche.keys())[1]
+    with open(pred_file, "w") as f:
+        print("chrom", "start", "end", f"Pr{{{label}}}", sep="\t", file=f)
+        with strategy.scope():
+            for coords, vcf_data in vcf_batch_gen:
+                predictions = model.predict_on_batch(vcf_data)
+                for (_, chrom, start, end), pred in zip(coords, predictions):
+                    printable_pred = [format(p, ".8f") for p in pred]
+                    print(chrom, start, end, *printable_pred, sep="\t", file=f)
 
-    print("chrom", "from", "to", f"Pr({label})", sep="\t")
-    with strategy.scope():
-        for coords, vcf_data in vcf_batch_gen:
-            predictions = model.predict_on_batch(vcf_data)
-            for (_, chrom, start, end), pred in zip(coords, predictions):
-                printable_pred = [format(p, ".8f") for p in pred]
-                print(chrom, start, end, *printable_pred, sep="\t")
+
+def do_apply(conf):
+    pred_file = conf.nn_hdf5_file[:-len(".hdf5")] + "_predictions.txt"
+    if not conf.plot_only:
+        get_predictions(conf, pred_file)
+    plots.predictions(conf, pred_file)
 
 
 def parse_args():
@@ -179,7 +187,7 @@ def parse_args():
     for i, p in enumerate((sim_parser, train_parser, eval_parser, apply_parser)):
 
         p.add_argument(
-                "-p", "--parallelism", default=0, type=int,
+                "-j", "--parallelism", default=0, type=int,
                 help="Number of processes or threads to use for parallel things. "
                      "E.g. simultaneous simulations, or the number of threads "
                      "used by tensorflow when running on CPU. "
@@ -210,6 +218,9 @@ def parse_args():
             "nn_hdf5_file", metavar="nn.hdf5", type=str,
             help="The trained nerual network model to evaulate.")
 
+    apply_parser.add_argument(
+            "-p", "--plot-only", default=False, action="store_true",
+            help="Just make the plots.")
     apply_parser.add_argument(
             "nn_hdf5_file", metavar="nn.hdf5", type=str,
             help="The trained nerual network model to apply.")
@@ -242,6 +253,7 @@ def parse_args():
     elif args.subcommand == "eval":
         args.conf.nn_hdf5_file = args.nn_hdf5_file
     elif args.subcommand == "apply":
+        args.conf.plot_only = args.plot_only
         args.conf.nn_hdf5_file = args.nn_hdf5_file
     args.conf.parallelism = args.parallelism
     args.conf.seed = args.seed
