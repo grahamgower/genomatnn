@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import sys
+import math
 import os.path
 import random
 import argparse
@@ -134,6 +135,286 @@ def random_autosomal_chunk(species, genetic_map, length):
     return contig
 
 
+def hominin_composite():
+    id = "HomininComposite_4G19"
+    description = "Four population out of Africa with Neandertal admixture"
+    long_description = """
+                A composite of demographic parameters from multiple sources
+                """
+    # samples:
+    # T_Altai = 115e3
+    # T_Vindija = 55e3
+    # n_YRI = 108
+    # n_CEU = 99
+
+    populations = [
+            stdpopsim.Population(
+                id="YRI",
+                description="1000 Genomes YRI (Yorubans)"),
+            stdpopsim.Population(
+                id="CEU",
+                description=(
+                    "1000 Genomes CEU (Utah Residents (CEPH) with Northern and "
+                    "Western European Ancestry")),
+            stdpopsim.Population(
+                id="Nea",
+                description="Neandertal lineage"),
+            stdpopsim.Population(
+                id="Anc",
+                description="Ancestral hominins",
+                sampling_time=None),
+            ]
+    pop = {p.id: i for i, p in enumerate(populations)}
+
+    citations = [
+            stdpopsim.Citation(
+                author="Kuhlwilm et al.",
+                year=2016,
+                doi="https://doi.org/10.1038/nature16544"),
+            stdpopsim.Citation(
+                author="Prüfer et al.",
+                year=2017,
+                doi="https://doi.org/10.1126/science.aao1887"),
+            stdpopsim.Citation(
+                author="Ragsdale and Gravel",
+                year=2019,
+                doi="https://doi.org/10.1371/journal.pgen.1008204")
+            ]
+
+    generation_time = 29
+
+    # Kuhlwilm et al. 2016
+    N_YRI = 27000
+    N_Nea = 3400
+    N_Anc = 18500
+
+    # Ragsdale & Gravel 2019
+    N_CEU0 = 1450
+    r_CEU = 0.00202
+    T_CEU_exp = 31.9e3 / generation_time
+    N_CEU = N_CEU0 * math.exp(r_CEU*T_CEU_exp)
+    T_YRI_CEU_split = 65.7e3 / generation_time
+    N_ooa_bottleneck = 1080
+
+    # Prüfer et al. 2017
+    T_Nea_human_split = 550e3 / generation_time
+    T_Nea_CEU_mig = 55e3 / generation_time
+    m_Nea_CEU = 0.0225
+
+    pop_meta = (p.asdict() for p in populations)
+    population_configurations = [
+        msprime.PopulationConfiguration(
+            initial_size=N_YRI, metadata=next(pop_meta)),
+        msprime.PopulationConfiguration(
+            initial_size=N_CEU, growth_rate=r_CEU, metadata=next(pop_meta)),
+        msprime.PopulationConfiguration(
+            initial_size=N_Nea, metadata=next(pop_meta)),
+        msprime.PopulationConfiguration(
+            initial_size=N_Anc, metadata=next(pop_meta)),
+        ]
+
+    demographic_events = [
+        # out-of-Africa bottleneck
+        msprime.PopulationParametersChange(
+            time=T_CEU_exp,
+            initial_size=N_ooa_bottleneck,
+            growth_rate=0,
+            population_id=pop["CEU"]),
+        # Neandertal -> CEU admixture
+        msprime.MassMigration(
+            time=T_Nea_CEU_mig,
+            proportion=m_Nea_CEU,
+            source=pop["CEU"],
+            destination=pop["Nea"]),
+        # population splits
+        msprime.MassMigration(
+            time=T_YRI_CEU_split,
+            source=pop["CEU"],
+            destination=pop["Anc"]),
+        msprime.MassMigration(
+            time=T_YRI_CEU_split,
+            source=pop["YRI"],
+            destination=pop["Anc"]),
+        msprime.MassMigration(
+            time=T_Nea_human_split,
+            source=pop["Nea"],
+            destination=pop["Anc"]),
+        ]
+
+    return stdpopsim.DemographicModel(
+            id=id,
+            description=description,
+            long_description=long_description,
+            populations=populations,
+            citations=citations,
+            generation_time=generation_time,
+            population_configurations=population_configurations,
+            demographic_events=demographic_events)
+
+
+def homsap_composite_model(length, sample_counts):
+    if "Nea" in sample_counts and sample_counts["Nea"] != 4:
+        raise RuntimeError(
+            "Must have one sample each for the Vindija and Altai Neanderthals")
+    species = stdpopsim.get_species("HomSap")
+    model = hominin_composite()
+    contig = random_autosomal_chunk(species, "HapMapII_GRCh37", length)
+    samples = model.get_samples(
+        *[sample_counts.get(p.id, 0) if p.id != "Nea" else 0 for p in model.populations])
+    if "Nea" in sample_counts:
+        # Altai and Vindija Neanderthal dates from Prüfer et al. 2017.
+        T_Altai = 115e3 / model.generation_time
+        T_Vindija = 55e3 / model.generation_time
+        pop = {p.id: i for i, p in enumerate(model.populations)}
+        samples.extend([
+            msprime.Sample(pop["Nea"], T_Altai),
+            msprime.Sample(pop["Nea"], T_Altai),
+            msprime.Sample(pop["Nea"], T_Vindija),
+            msprime.Sample(pop["Nea"], T_Vindija)
+            ])
+    return species, model, contig, samples
+
+
+def homsap_composite_Nea_to_CEU(
+        model, contig, samples, seed,
+        dfe=False, slim_script=False, min_allele_frequency=0.05, **kwargs):
+    rng = random.Random(seed)
+    pop = {p.id: i for i, p in enumerate(model.populations)}
+
+    mutation_types = []
+    if dfe:
+        mutation_types.extend(stdpopsim.ext.KimDFE())
+    positive = stdpopsim.ext.MutationType(convert_to_substitution=False)
+    mutation_types.append(positive)
+    mut_id = len(mutation_types)
+
+    T_Nea_human_split = contact.split_time(model, pop["Nea"], pop["CEU"])
+    assert T_Nea_human_split == 550e3 / model.generation_time
+    T_YRI_CEU_split = contact.split_time(model, pop["YRI"], pop["CEU"])
+    assert T_YRI_CEU_split == 65.7e3 / model.generation_time
+    T_Nea_CEU_mig = contact.tmrca(model, pop["Nea"], pop["CEU"])
+    assert T_Nea_CEU_mig == 55e3 / model.generation_time
+
+    T_mut = rng.uniform(T_Nea_human_split, T_Nea_CEU_mig)
+    T_sel = rng.uniform(1e3 / model.generation_time, T_Nea_CEU_mig)
+    s = rng.uniform(0.001, 0.1)
+
+    coordinate = round(contig.recombination_map.get_length() / 2)
+
+    extended_events = [
+        # Draw mutation in Neanderthals.
+        stdpopsim.ext.DrawMutation(
+                time=T_mut, mutation_type_id=mut_id, population_id=pop["Nea"],
+                coordinate=coordinate,
+                # Save state before the mutation is introduced
+                save=True),
+        # Mutation is positively selected in CEU
+        stdpopsim.ext.ChangeMutationFitness(
+                start_time=T_sel, end_time=0,
+                mutation_type_id=mut_id, population_id=pop["CEU"],
+                selection_coeff=s, dominance_coeff=0.5),
+        # Allele frequency conditioning. If the condition is not met, we
+        # restore to the most recent save point.
+        stdpopsim.ext.ConditionOnAlleleFrequency(
+                start_time=stdpopsim.ext.GenerationAfter(T_mut),
+                end_time=T_Nea_CEU_mig,
+                mutation_type_id=mut_id, population_id=pop["Nea"],
+                op=">", allele_frequency=0),
+        stdpopsim.ext.ConditionOnAlleleFrequency(
+                start_time=stdpopsim.ext.GenerationAfter(T_Nea_CEU_mig),
+                end_time=0,
+                mutation_type_id=mut_id, population_id=pop["CEU"],
+                op=">", allele_frequency=0,
+                # Update save point at start_time.
+                save=True),
+        stdpopsim.ext.ConditionOnAlleleFrequency(
+                start_time=0, end_time=0,
+                mutation_type_id=mut_id, population_id=pop["CEU"],
+                op=">", allele_frequency=min_allele_frequency),
+        ]
+
+    engine = stdpopsim.get_engine("slim")
+    ts = engine.simulate(
+            model, contig, samples,
+            seed=seed,
+            mutation_types=mutation_types,
+            extended_events=extended_events,
+            slim_script=slim_script,
+            slim_burn_in=10 if dfe else 0.1,
+            slim_scaling_factor=10,
+            )
+
+    return ts, (
+            contig.origin, T_mut*model.generation_time,
+            T_sel*model.generation_time, s)
+
+
+def homsap_composite_Sweep_CEU(
+        model, contig, samples, seed,
+        dfe=False, slim_script=False, min_allele_frequency=0.05, **kwargs):
+    rng = random.Random(seed)
+    pop = {p.id: i for i, p in enumerate(model.populations)}
+
+    mutation_types = []
+    if dfe:
+        mutation_types.extend(stdpopsim.ext.KimDFE())
+    positive = stdpopsim.ext.MutationType(convert_to_substitution=False)
+    mutation_types.append(positive)
+    mut_id = len(mutation_types)
+
+    T_Nea_human_split = contact.split_time(model, pop["Nea"], pop["CEU"])
+    assert T_Nea_human_split == 550e3 / model.generation_time
+    T_YRI_CEU_split = contact.split_time(model, pop["YRI"], pop["CEU"])
+    assert T_YRI_CEU_split == 65.7e3 / model.generation_time
+    T_Nea_CEU_mig = contact.tmrca(model, pop["Nea"], pop["CEU"])
+    assert T_Nea_CEU_mig == 55e3 / model.generation_time
+
+    T_sel = rng.uniform(1e3 / model.generation_time, T_YRI_CEU_split)
+    T_mut = rng.uniform(T_sel, T_YRI_CEU_split)
+    s = rng.uniform(0.001, 0.1)
+
+    coordinate = round(contig.recombination_map.get_length() / 2)
+
+    extended_events = [
+        # Draw mutation.
+        stdpopsim.ext.DrawMutation(
+                time=T_mut, mutation_type_id=mut_id, population_id=pop["CEU"],
+                coordinate=coordinate,
+                # Save state before the mutation is introduced.
+                save=True),
+        # Mutation is positively selected at time T_sel.
+        stdpopsim.ext.ChangeMutationFitness(
+                start_time=T_sel, end_time=0,
+                mutation_type_id=mut_id, population_id=pop["CEU"],
+                selection_coeff=s, dominance_coeff=0.5),
+        # Allele frequency conditioning. If the condition is not met, we
+        # restore to the save point.
+        stdpopsim.ext.ConditionOnAlleleFrequency(
+                start_time=stdpopsim.ext.GenerationAfter(T_mut), end_time=0,
+                mutation_type_id=mut_id, population_id=pop["CEU"],
+                op=">", allele_frequency=0),
+        stdpopsim.ext.ConditionOnAlleleFrequency(
+                start_time=0, end_time=0,
+                mutation_type_id=mut_id, population_id=pop["CEU"],
+                op=">", allele_frequency=min_allele_frequency),
+        ]
+
+    engine = stdpopsim.get_engine("slim")
+    ts = engine.simulate(
+            model, contig, samples,
+            seed=seed,
+            mutation_types=mutation_types,
+            extended_events=extended_events,
+            slim_script=slim_script,
+            slim_burn_in=10 if dfe else 0.1,
+            slim_scaling_factor=10,
+            )
+
+    return ts, (
+            contig.origin, T_mut*model.generation_time,
+            T_sel*model.generation_time, s)
+
+
 def homsap_papuans_model(length, sample_counts):
     species = stdpopsim.get_species("HomSap")
     model = species.get_demographic_model("PapuansOutOfAfrica_10J19")
@@ -143,7 +424,7 @@ def homsap_papuans_model(length, sample_counts):
     return species, model, contig, samples
 
 
-def homsap_papuans_Neutral(model, contig, samples, seed, engine="slim", **kwargs):
+def generic_Neutral(model, contig, samples, seed, engine="slim", **kwargs):
     engine = stdpopsim.get_engine(engine)
     ts = engine.simulate(
             model, contig, samples, seed=seed,
@@ -153,7 +434,7 @@ def homsap_papuans_Neutral(model, contig, samples, seed, engine="slim", **kwargs
     return ts, (contig.origin, 0, 0, 0)
 
 
-def homsap_papuans_DFE(model, contig, samples, seed, **kwargs):
+def homsap_DFE(model, contig, samples, seed, **kwargs):
     mutation_types = stdpopsim.ext.KimDFE()
     engine = stdpopsim.get_engine("slim")
     ts = engine.simulate(
@@ -329,25 +610,211 @@ def homsap_papuans_Sweep_Papuan(
             T_sel*model.generation_time, s)
 
 
+def homsap_papuans_AI_Den_to_CHB(
+        model, contig, samples, seed,
+        dfe=False, Den="Den1", slim_script=False, min_allele_frequency=0.05,
+        **kwargs):
+    if Den not in ("Den1", "Den2"):
+        raise ValueError("Source population Den must be either Den1 or Den2.")
+    rng = random.Random(seed)
+    pop = {p.id: i for i, p in enumerate(model.populations)}
+
+    mutation_types = []
+    if dfe:
+        mutation_types.extend(stdpopsim.ext.KimDFE())
+    positive = stdpopsim.ext.MutationType(convert_to_substitution=False)
+    mutation_types.append(positive)
+    mut_id = len(mutation_types)
+
+    T_Den_Nea_split = contact.split_time(model, pop["DenA"], pop["NeaA"])
+    T_DenA_Den1_split = contact.split_time(model, pop["DenA"], pop["Den1"])
+    T_DenA_Den2_split = contact.split_time(model, pop["DenA"], pop["Den2"])
+    T_CEU_CHB_split = contact.split_time(model, pop["CEU"], pop["CHB"])
+
+    assert T_Den_Nea_split == 15090
+    assert T_DenA_Den1_split == 9750
+    assert T_DenA_Den2_split == 12500
+    assert T_CEU_CHB_split == 1293
+
+    T_Den1_Papuan_mig = contact.tmrca(model, pop["Papuan"], pop["Den1"])
+    T_Den2_Papuan_mig = contact.tmrca(model, pop["Papuan"], pop["Den2"])
+
+    assert T_Den1_Papuan_mig == 29.8e3 / model.generation_time
+    assert T_Den2_Papuan_mig == 45.7e3 / model.generation_time
+
+    if Den == "Den1":
+        T_Den_split = T_DenA_Den1_split
+        T_mig = T_Den1_Papuan_mig
+    else:
+        T_Den_split = T_DenA_Den2_split
+        T_mig = T_Den2_Papuan_mig
+
+    T_mut = rng.uniform(T_Den_split, T_Den_Nea_split)
+    T_sel = rng.uniform(1e3 / model.generation_time, T_CEU_CHB_split)
+    s = rng.uniform(0.001, 0.1)
+
+    coordinate = round(contig.recombination_map.get_length() / 2)
+
+    extended_events = [
+        # Draw mutation in Denisovans.
+        stdpopsim.ext.DrawMutation(
+                time=T_mut, mutation_type_id=mut_id, population_id=pop["DenA"],
+                coordinate=coordinate,
+                # Save state before the mutation is introduced
+                save=True),
+        # Mutation is positively selected in CHB
+        stdpopsim.ext.ChangeMutationFitness(
+                start_time=T_sel, end_time=0,
+                mutation_type_id=mut_id, population_id=pop["CHB"],
+                selection_coeff=s, dominance_coeff=0.5),
+        # Allele frequency conditioning. If the condition is not met, we
+        # restore to the most recent save point.
+        stdpopsim.ext.ConditionOnAlleleFrequency(
+                start_time=stdpopsim.ext.GenerationAfter(T_mut),
+                end_time=T_Den_split,
+                mutation_type_id=mut_id, population_id=pop["DenA"],
+                op=">", allele_frequency=0),
+        stdpopsim.ext.ConditionOnAlleleFrequency(
+                start_time=stdpopsim.ext.GenerationAfter(T_Den_split),
+                end_time=T_mig,
+                mutation_type_id=mut_id, population_id=pop[Den],
+                op=">", allele_frequency=0,
+                # Update save point at start_time.
+                save=True),
+        stdpopsim.ext.ConditionOnAlleleFrequency(
+                start_time=stdpopsim.ext.GenerationAfter(T_mig),
+                end_time=stdpopsim.ext.GenerationAfter(T_mig),
+                mutation_type_id=mut_id, population_id=pop["Papuan"],
+                op=">", allele_frequency=0,
+                # Update save point at start_time.
+                save=True),
+        stdpopsim.ext.ConditionOnAlleleFrequency(
+                start_time=0, end_time=0,
+                mutation_type_id=mut_id, population_id=pop["CHB"],
+                op=">", allele_frequency=min_allele_frequency),
+        ]
+
+    engine = stdpopsim.get_engine("slim")
+    ts = engine.simulate(
+            model, contig, samples,
+            seed=seed,
+            mutation_types=mutation_types,
+            extended_events=extended_events,
+            slim_script=slim_script,
+            slim_burn_in=10 if dfe else 0.1,
+            slim_scaling_factor=10,
+            )
+
+    return ts, (
+            contig.origin, T_mut*model.generation_time,
+            T_sel*model.generation_time, s)
+
+
+def homsap_papuans_Sweep_CHB(
+        model, contig, samples, seed,
+        dfe=False, slim_script=False, min_allele_frequency=0.05,
+        **kwargs):
+    rng = random.Random(seed)
+
+    pop = {p.id: i for i, p in enumerate(model.populations)}
+
+    mutation_types = []
+    if dfe:
+        mutation_types.extend(stdpopsim.ext.KimDFE())
+    positive = stdpopsim.ext.MutationType(convert_to_substitution=False)
+    mutation_types.append(positive)
+    mut_id = len(mutation_types)
+
+    T_CEU_CHB_split = contact.split_time(model, pop["CEU"], pop["CHB"])
+    assert T_CEU_CHB_split == 1293, f"{T_CEU_CHB_split}"
+
+    T_sel = rng.uniform(1e3 / model.generation_time, T_CEU_CHB_split)
+    T_mut = rng.uniform(T_sel, T_CEU_CHB_split)
+    s = rng.uniform(0.001, 0.1)
+
+    coordinate = round(contig.recombination_map.get_length() / 2)
+
+    extended_events = [
+        # Draw mutation.
+        stdpopsim.ext.DrawMutation(
+                time=T_mut, mutation_type_id=mut_id, population_id=pop["CHB"],
+                coordinate=coordinate,
+                # Save state before the mutation is introduced.
+                save=True),
+        # Mutation is positively selected at time T_sel.
+        stdpopsim.ext.ChangeMutationFitness(
+                start_time=T_sel, end_time=0,
+                mutation_type_id=mut_id, population_id=pop["CHB"],
+                selection_coeff=s, dominance_coeff=0.5),
+        # Allele frequency conditioning. If the condition is not met, we
+        # restore to the save point.
+        stdpopsim.ext.ConditionOnAlleleFrequency(
+                start_time=stdpopsim.ext.GenerationAfter(T_mut), end_time=0,
+                mutation_type_id=mut_id, population_id=pop["CHB"],
+                op=">", allele_frequency=0),
+        stdpopsim.ext.ConditionOnAlleleFrequency(
+                start_time=0, end_time=0,
+                mutation_type_id=mut_id, population_id=pop["CHB"],
+                op=">", allele_frequency=min_allele_frequency),
+        ]
+
+    engine = stdpopsim.get_engine("slim")
+    ts = engine.simulate(
+            model, contig, samples,
+            seed=seed,
+            mutation_types=mutation_types,
+            extended_events=extended_events,
+            slim_script=slim_script,
+            slim_burn_in=10 if dfe else 0.1,
+            slim_scaling_factor=10,
+            )
+
+    return ts, (
+            contig.origin, T_mut*model.generation_time,
+            T_sel*model.generation_time, s)
+
+
+# TODO: nested dicts here are unwieldy. Use attr classes instead?
 _simulations = {
     "HomSap/PapuansOutOfAfrica_10J19": {
         # Model kwargs come first and must be prefixed with an underscore.
-        "_sample_counts": {"YRI": 216, "Papuan": 56, "DenA": 2, "NeaA": 2},
+        # TODO: remove _sample_counts
+        # "_sample_counts": {"YRI": 216, "Papuan": 56, "DenA": 2, "NeaA": 2},
+        "_sample_counts": {"YRI": 216, "CHB": 200, "DenA": 2, "NeaA": 2},
 
         # Base demographic model.
         "demographic_model": homsap_papuans_model,
 
         # Various mutation models to stack on top of the demographic model.
         "Neutral/slim":
-            functools.partial(homsap_papuans_Neutral, engine="slim"),
+            functools.partial(generic_Neutral, engine="slim"),
         "Neutral/msprime":
-            functools.partial(homsap_papuans_Neutral, engine="msprime"),
-        "DFE": homsap_papuans_DFE,
+            functools.partial(generic_Neutral, engine="msprime"),
+        "DFE": homsap_DFE,
         "AI/Den1_to_Papuan":
             functools.partial(homsap_papuans_AI_Den_to_Papuan, Den="Den1"),
         "AI/Den2_to_Papuan":
             functools.partial(homsap_papuans_AI_Den_to_Papuan, Den="Den2"),
         "Sweep/Papuan": homsap_papuans_Sweep_Papuan,
+
+        "AI/Den1_to_CHB":
+            functools.partial(homsap_papuans_AI_Den_to_CHB, Den="Den1"),
+        "AI/Den2_to_CHB":
+            functools.partial(homsap_papuans_AI_Den_to_CHB, Den="Den2"),
+        "Sweep/CHB": homsap_papuans_Sweep_CHB,
+        },
+    "HomSap/HomininComposite_4G19": {
+        # TODO: remove _sample_counts
+        "_sample_counts": {"YRI": 216, "CEU": 198, "Nea": 4},
+        "demographic_model": homsap_composite_model,
+
+        "Neutral/slim":
+            functools.partial(generic_Neutral, engine="slim"),
+        "Neutral/msprime":
+            functools.partial(generic_Neutral, engine="msprime"),
+        "DFE": homsap_DFE,
+        "AI/Nea_to_CEU": homsap_composite_Nea_to_CEU,
+        "Sweep/CEU": homsap_composite_Sweep_CEU,
         },
 }
 
