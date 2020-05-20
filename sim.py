@@ -295,8 +295,9 @@ def homsap_composite_Nea_to_CEU(
     T_Nea_CEU_mig = contact.tmrca(model, pop["Nea"], pop["CEU"])
     assert T_Nea_CEU_mig == 55e3 / model.generation_time
 
-    T_mut = rng.uniform(T_Nea_human_split, T_Nea_CEU_mig)
-    T_sel = rng.uniform(1e3 / model.generation_time, T_Nea_CEU_mig)
+    t_delta = 1e3 / model.generation_time
+    T_mut = rng.uniform(T_Nea_human_split, T_Nea_CEU_mig + t_delta)
+    T_sel = rng.uniform(t_delta, T_Nea_CEU_mig)
     s = rng.uniform(0.001, 0.1)
 
     coordinate = round(contig.recombination_map.get_length() / 2)
@@ -316,6 +317,7 @@ def homsap_composite_Nea_to_CEU(
         # Allele frequency conditioning. If the condition is not met, we
         # restore to the most recent save point.
         stdpopsim.ext.ConditionOnAlleleFrequency(
+                # FIXME: GenerationAfter(T_mut) < T_Nea_CEU_mig
                 start_time=stdpopsim.ext.GenerationAfter(T_mut),
                 end_time=T_Nea_CEU_mig,
                 mutation_type_id=mut_id, population_id=pop["Nea"],
@@ -486,8 +488,9 @@ def homsap_papuans_AI_Den_to_Papuan(
         T_Den_split = T_DenA_Den2_split
         T_mig = T_Den2_Papuan_mig
 
-    T_mut = rng.uniform(T_Den_split, T_Den_Nea_split)
-    T_sel = rng.uniform(1e3 / model.generation_time, T_mig)
+    t_delta = 1e3 / model.generation_time
+    T_mut = rng.uniform(T_Den_split, T_Den_Nea_split + t_delta)
+    T_sel = rng.uniform(t_delta, T_mig)
     s = rng.uniform(0.001, 0.1)
 
     coordinate = round(contig.recombination_map.get_length() / 2)
@@ -507,6 +510,7 @@ def homsap_papuans_AI_Den_to_Papuan(
         # Allele frequency conditioning. If the condition is not met, we
         # restore to the most recent save point.
         stdpopsim.ext.ConditionOnAlleleFrequency(
+                # FIXME: GenerationAfter(T_mut) < T_Den_split
                 start_time=stdpopsim.ext.GenerationAfter(T_mut),
                 end_time=T_Den_split,
                 mutation_type_id=mut_id, population_id=pop["DenA"],
@@ -649,8 +653,9 @@ def homsap_papuans_AI_Den_to_CHB(
         T_Den_split = T_DenA_Den2_split
         T_mig = T_Den2_Papuan_mig
 
-    T_mut = rng.uniform(T_Den_split, T_Den_Nea_split)
-    T_sel = rng.uniform(1e3 / model.generation_time, T_CEU_CHB_split)
+    t_delta = 1e3 / model.generation_time
+    T_mut = rng.uniform(T_Den_split, T_Den_Nea_split + t_delta)
+    T_sel = rng.uniform(t_delta, T_CEU_CHB_split)
     s = rng.uniform(0.001, 0.1)
 
     coordinate = round(contig.recombination_map.get_length() / 2)
@@ -670,6 +675,7 @@ def homsap_papuans_AI_Den_to_CHB(
         # Allele frequency conditioning. If the condition is not met, we
         # restore to the most recent save point.
         stdpopsim.ext.ConditionOnAlleleFrequency(
+                # FIXME: GenerationAfter(T_mut) < T_Den_split
                 start_time=stdpopsim.ext.GenerationAfter(T_mut),
                 end_time=T_Den_split,
                 mutation_type_id=mut_id, population_id=pop["DenA"],
