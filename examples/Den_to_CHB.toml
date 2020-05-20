@@ -13,7 +13,7 @@ sequence_length = 100_000  # 100 kb
 # For selection simulations (sweep or AI), condition on the final allele
 # frequency of the selected mutation being greater than this in the target
 # population.
-min_allele_frequency = 0.05
+min_allele_frequency = 0.01
 
 [sim.tranche]
 # The labels and modelspec(s) for each tranche. The network will be trained to

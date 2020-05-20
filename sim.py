@@ -277,7 +277,7 @@ def homsap_composite_model(length, sample_counts):
 
 def homsap_composite_Nea_to_CEU(
         model, contig, samples, seed,
-        dfe=False, slim_script=False, min_allele_frequency=0.05, **kwargs):
+        dfe=False, slim_script=False, min_allele_frequency=0, **kwargs):
     rng = random.Random(seed)
     pop = {p.id: i for i, p in enumerate(model.populations)}
 
@@ -351,7 +351,7 @@ def homsap_composite_Nea_to_CEU(
 
 def homsap_composite_Sweep_CEU(
         model, contig, samples, seed,
-        dfe=False, slim_script=False, min_allele_frequency=0.05, **kwargs):
+        dfe=False, slim_script=False, min_allele_frequency=0, **kwargs):
     rng = random.Random(seed)
     pop = {p.id: i for i, p in enumerate(model.populations)}
 
@@ -449,7 +449,7 @@ def homsap_DFE(model, contig, samples, seed, **kwargs):
 
 def homsap_papuans_AI_Den_to_Papuan(
         model, contig, samples, seed,
-        dfe=False, Den="Den1", slim_script=False, min_allele_frequency=0.05,
+        dfe=False, Den="Den1", slim_script=False, min_allele_frequency=0,
         **kwargs):
     rng = random.Random(seed)
 
@@ -548,7 +548,7 @@ def homsap_papuans_AI_Den_to_Papuan(
 
 def homsap_papuans_Sweep_Papuan(
         model, contig, samples, seed,
-        dfe=False, slim_script=False, min_allele_frequency=0.05,
+        dfe=False, slim_script=False, min_allele_frequency=0,
         **kwargs):
     rng = random.Random(seed)
 
@@ -612,7 +612,7 @@ def homsap_papuans_Sweep_Papuan(
 
 def homsap_papuans_AI_Den_to_CHB(
         model, contig, samples, seed,
-        dfe=False, Den="Den1", slim_script=False, min_allele_frequency=0.05,
+        dfe=False, Den="Den1", slim_script=False, min_allele_frequency=0,
         **kwargs):
     if Den not in ("Den1", "Den2"):
         raise ValueError("Source population Den must be either Den1 or Den2.")
@@ -712,7 +712,7 @@ def homsap_papuans_AI_Den_to_CHB(
 
 def homsap_papuans_Sweep_CHB(
         model, contig, samples, seed,
-        dfe=False, slim_script=False, min_allele_frequency=0.05,
+        dfe=False, slim_script=False, min_allele_frequency=0,
         **kwargs):
     rng = random.Random(seed)
 
