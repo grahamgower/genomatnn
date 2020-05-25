@@ -296,7 +296,7 @@ def homsap_composite_Nea_to_CEU(
     assert T_Nea_CEU_mig == 55e3 / model.generation_time
 
     t_delta = 1e3 / model.generation_time
-    T_mut = rng.uniform(T_Nea_human_split, T_Nea_CEU_mig + t_delta)
+    T_mut = rng.uniform(T_Nea_CEU_mig + t_delta, T_Nea_human_split)
     T_sel = rng.uniform(t_delta, T_Nea_CEU_mig)
     s = rng.uniform(0.001, 0.1)
 
@@ -489,7 +489,7 @@ def homsap_papuans_AI_Den_to_Papuan(
         T_mig = T_Den2_Papuan_mig
 
     t_delta = 1e3 / model.generation_time
-    T_mut = rng.uniform(T_Den_split, T_Den_Nea_split + t_delta)
+    T_mut = rng.uniform(T_Den_split + t_delta, T_Den_Nea_split)
     T_sel = rng.uniform(t_delta, T_mig)
     s = rng.uniform(0.001, 0.1)
 
@@ -654,7 +654,7 @@ def homsap_papuans_AI_Den_to_CHB(
         T_mig = T_Den2_Papuan_mig
 
     t_delta = 1e3 / model.generation_time
-    T_mut = rng.uniform(T_Den_split, T_Den_Nea_split + t_delta)
+    T_mut = rng.uniform(T_Den_split + t_delta, T_Den_Nea_split)
     T_sel = rng.uniform(t_delta, T_CEU_CHB_split)
     s = rng.uniform(0.001, 0.1)
 
