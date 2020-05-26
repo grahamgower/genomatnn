@@ -63,7 +63,7 @@ def do_train(conf):
     data = convert.prepare_training_data(
             conf.dir, conf.tranche, pop_indices, ref_pop, conf.num_rows,
             conf.num_cols, rng, parallelism, conf.maf_threshold, cache)
-    train_data, train_labels, val_data, val_labels = data
+    train_data, train_labels, _, val_data, val_labels, _ = data
     n_train = train_data.shape[0]
     n_val = val_data.shape[0]
     logger.debug(
@@ -78,6 +78,22 @@ def do_train(conf):
 
 def do_eval(conf):
     raise NotImplementedError("'eval' not yet implemented")
+
+    rng = random.Random(conf.seed)
+    cache = conf.dir / f"zarrcache_{conf.num_rows}-rows"
+    if not cache.exists():
+        raise RuntimeError("Cannot evaluate without zarr cache.")
+
+    # Translate ref_pop and pop_indices to tree sequence population indices.
+    ref_pop = conf.pop2tsidx[conf.ref_pop]
+    pop_indices = {conf.pop2tsidx[pop]: idx
+                   for pop, idx in conf.pop_indices().items()}
+    parallelism = conf.parallelism if conf.parallelism > 0 else os.cpu_count()
+
+    data = convert.prepare_training_data(
+            conf.dir, conf.tranche, pop_indices, ref_pop, conf.num_rows,
+            conf.num_cols, rng, parallelism, conf.maf_threshold, cache)
+    train_data, train_labels, train_metadata, val_data, val_labels, val_metadata = data
 
 
 def vcf_get1(
@@ -163,9 +179,10 @@ def get_predictions(conf, pred_file):
 
 def do_apply(conf):
     pred_file = conf.nn_hdf5_file[:-len(".hdf5")] + "_predictions.txt"
+    pdf_file = conf.nn_hdf5_file[:-len(".hdf5")] + "_predictions.pdf"
     if not conf.plot_only:
         get_predictions(conf, pred_file)
-    plots.predictions(conf, pred_file)
+    plots.predictions(conf, pred_file, pdf_file)
 
 
 def parse_args():

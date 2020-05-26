@@ -9,6 +9,7 @@ import numpy as np
 import zarr
 import tskit
 
+import provenance
 
 logger = logging.getLogger(__name__)
 
@@ -111,7 +112,10 @@ def ts_genotype_matrix(
         raise RuntimeError(
                 f"{ts_file}: found {sum(ts_counts.values())} samples, "
                 f"but expected {num_cols}")
-    return _reorder_and_sort(A, ts_counts, ts_pop_indices, pop_indices, ref_pop)
+    B = _reorder_and_sort(A, ts_counts, ts_pop_indices, pop_indices, ref_pop)
+    params = provenance.load_parameters(ts, "genomatnn")
+    metadata = tuple(params[k] for k in ("modelspec", "T_mut", "T_sel", "s"))
+    return B, metadata
 
 
 def _prepare_training_data(
@@ -154,13 +158,22 @@ def _prepare_training_data(
             num_rows=num_rows, num_cols=num_cols, maf_thres=maf_thres, rng=rng)
 
     with concurrent.futures.ProcessPoolExecutor(parallelism) as ex:
-        data = list(ex.map(gt_func, files, chunksize=10))
+        res = list(ex.map(gt_func, files, chunksize=10))
+        data, metadata = zip(*res)
     data = np.array(data, dtype=np.int8)
+
+    max_modelspec_len = functools.reduce(max, (len(md[0]) for md in metadata))
+    metadata_dtype = [
+            ("modelspec", f"U{max_modelspec_len}"),
+            ("T_mut", float), ("T_sel", float), ("s", float)]
+    metadata = np.fromiter(metadata, dtype=metadata_dtype)
 
     train_data, val_data = data[:n_train], data[n_train:]
     train_labels, val_labels = labels[:n_train], labels[n_train:]
+    train_metadata, val_metadata = metadata[:n_train], metadata[n_train:]
 
-    return train_data, train_labels, val_data, val_labels
+    return (train_data, train_labels, train_metadata,
+            val_data, val_labels, val_metadata)
 
 
 def _check_data(data, tranche, num_rows, num_cols):
@@ -169,7 +182,8 @@ def _check_data(data, tranche, num_rows, num_cols):
     """
     n_ids = len(tranche)
     assert n_ids >= 2, "Must specify at least two tranches."
-    train_data, train_labels, val_data, val_labels = data
+    (train_data, train_labels, train_metadata,
+        val_data, val_labels, val_metadata) = data
     for d in (train_data, val_data):
         assert len(d.shape) == 3, "Data has too many dimensions."
         assert d.shape[1:3] == (num_rows, num_cols), \
@@ -178,9 +192,13 @@ def _check_data(data, tranche, num_rows, num_cols):
     assert train_data.shape[2] == val_data.shape[2], \
         "Training and validation data have different shapes."
     assert train_data.shape[0] == train_labels.shape[0], \
-        "The number of data instances doesn't match the number of labels."
+        "The number of training data instances doesn't match the number of labels."
+    assert train_data.shape[0] == train_metadata.shape[0], \
+        "The number of training data instances doesn't match the metadata."
     assert val_data.shape[0] == val_labels.shape[0], \
-        "The number of data instances doesn't match the number of labels."
+        "The number of validataion data instances doesn't match the number of labels."
+    assert val_data.shape[0] == val_metadata.shape[0], \
+        "The number of validation data instances doesn't match the metadata."
     for i, l in enumerate((train_labels, val_labels)):
         which = "training" if i == 0 else "validation"
         n_unique_ids = len(np.unique(l))
@@ -195,7 +213,8 @@ def prepare_training_data(
     """
     Wrapper for _prepare_training_data() that maintains an on-disk zarr cache.
     """
-    cache_keys = ("train/data", "train/labels", "val/data", "val/labels")
+    cache_keys = ("train/data", "train/labels", "train/metadata",
+                  "val/data", "val/labels", "val/metadata")
     if cache.exists():
         logger.debug(f"Loading data from {cache}.")
         store = zarr.load(str(cache))
