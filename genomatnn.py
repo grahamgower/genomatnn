@@ -77,23 +77,29 @@ def do_train(conf):
 
 
 def do_eval(conf):
-    raise NotImplementedError("'eval' not yet implemented")
-
-    rng = random.Random(conf.seed)
     cache = conf.dir / f"zarrcache_{conf.num_rows}-rows"
-    if not cache.exists():
-        raise RuntimeError("Cannot evaluate without zarr cache.")
+    data = convert.load_data_cache(cache)
+    convert.check_data(data, conf.tranche, conf.num_rows, conf.num_cols)
 
-    # Translate ref_pop and pop_indices to tree sequence population indices.
-    ref_pop = conf.pop2tsidx[conf.ref_pop]
-    pop_indices = {conf.pop2tsidx[pop]: idx
-                   for pop, idx in conf.pop_indices().items()}
-    parallelism = conf.parallelism if conf.parallelism > 0 else os.cpu_count()
+    _, _, _, val_data, val_labels, val_metadata = data
 
-    data = convert.prepare_training_data(
-            conf.dir, conf.tranche, pop_indices, ref_pop, conf.num_rows,
-            conf.num_cols, rng, parallelism, conf.maf_threshold, cache)
-    train_data, train_labels, train_metadata, val_data, val_labels, val_metadata = data
+    logger.debug("Applying tensorflow to validation data...")
+    import tfstuff
+    import tensorflow as tf
+    from tensorflow.keras import models
+    tfstuff.tf_config(conf.parallelism)
+    model = models.load_model(conf.nn_hdf5_file)
+    strategy = tf.distribute.MirroredStrategy()
+
+    with strategy.scope():
+        val_pred = model.predict(val_data)
+
+    if val_pred.shape[1] != 1:
+        raise NotImplementedError("Only binary predictions are supported")
+    val_pred = val_pred[:, 0]
+
+    roc_pdf = conf.nn_hdf5_file[:-len(".hdf5")] + "_roc.pdf"
+    plots.roc(conf, val_labels, val_pred, val_metadata, roc_pdf)
 
 
 def vcf_get1(

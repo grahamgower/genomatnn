@@ -176,7 +176,7 @@ def _prepare_training_data(
             val_data, val_labels, val_metadata)
 
 
-def _check_data(data, tranche, num_rows, num_cols):
+def check_data(data, tranche, num_rows, num_cols):
     """
     A sprinkling of paranoia.
     """
@@ -207,26 +207,40 @@ def _check_data(data, tranche, num_rows, num_cols):
             f"but {n_ids} tranches were specified"
 
 
+_cache_keys = (
+        "train/data", "train/labels", "train/metadata",
+        "val/data", "val/labels", "val/metadata",
+        )
+
+
+def load_data_cache(cache):
+    if not cache.exists():
+        raise RuntimeError(f"{cache} doesn't exist")
+    logger.debug(f"Loading data from {cache}.")
+    store = zarr.load(str(cache))
+    return tuple(store[k] for k in _cache_keys)
+
+
+def save_data_cache(cache, data):
+    logger.debug(f"Caching data to {cache}.")
+    data_kwargs = {k: zarr.array(v, chunks=False)
+                   for k, v in zip(_cache_keys, data)}
+    zarr.save(str(cache), **data_kwargs)
+
+
 def prepare_training_data(
         path, tranche, pop_indices, ref_pop, num_rows, num_cols, rng,
         parallelism, maf_thres, cache):
     """
     Wrapper for _prepare_training_data() that maintains an on-disk zarr cache.
     """
-    cache_keys = ("train/data", "train/labels", "train/metadata",
-                  "val/data", "val/labels", "val/metadata")
     if cache.exists():
-        logger.debug(f"Loading data from {cache}.")
-        store = zarr.load(str(cache))
-        data = tuple(store[k] for k in cache_keys)
+        data = load_data_cache(cache)
     else:
         # Data are not cached, load them up.
         data = _prepare_training_data(
                 path, tranche, pop_indices, ref_pop, num_rows, num_cols, rng,
                 parallelism, maf_thres)
-        logger.debug(f"Caching data to {cache}.")
-        data_kwargs = {k: zarr.array(v, chunks=False)
-                       for k, v in zip(cache_keys, data)}
-        zarr.save(str(cache), **data_kwargs)
-    _check_data(data, tranche, num_rows, num_cols)
+        save_data_cache(cache, data)
+    check_data(data, tranche, num_rows, num_cols)
     return data
