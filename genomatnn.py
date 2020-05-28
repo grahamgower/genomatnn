@@ -13,6 +13,7 @@ import numpy as np
 
 import config
 import convert
+import calibrate
 import sim
 import vcf
 import plots
@@ -98,8 +99,35 @@ def do_eval(conf):
         raise NotImplementedError("Only binary predictions are supported")
     val_pred = val_pred[:, 0]
 
+    if conf.calibration is not None:
+        cal = conf.calibration()
+        val_pred_cal = cal.fit(val_pred, val_labels).predict(val_pred)
+    else:
+        val_pred_cal = val_pred
+
     roc_pdf = conf.nn_hdf5_file[:-len(".hdf5")] + "_roc.pdf"
-    plots.roc(conf, val_labels, val_pred, val_metadata, roc_pdf)
+    plots.roc(conf, val_labels, val_pred_cal, val_metadata, roc_pdf)
+
+    val_accuracy_pdf = conf.nn_hdf5_file[:-len(".hdf5")] + "_val_accuracy.pdf"
+    plots.accuracy(conf, val_labels, val_pred_cal, val_metadata, val_accuracy_pdf)
+
+    val_confusion_pdf = conf.nn_hdf5_file[:-len(".hdf5")] + "_val_confusion.pdf"
+    plots.confusion(conf, val_labels, val_pred_cal, val_metadata, val_confusion_pdf)
+
+    # Apply various calibrations to the prediction probabilties.
+    # We use only the first half of the validation set for calibrating,
+    # and calculate reliability on the second half.
+    n = len(val_pred)
+    x1, y1 = val_pred[:n//2], val_labels[:n//2]
+    x2, y2 = val_pred[n//2:], val_labels[n//2:]
+    preds = [("Uncal.", x2)]
+    for cc in calibrate.calibration_classes:
+        label = cc.__name__
+        cc_x_pred = cc().fit(x1, y1).predict(x2)
+        preds.append((label, cc_x_pred))
+
+    val_reliability_pdf = conf.nn_hdf5_file[:-len(".hdf5")] + "_val_reliability.pdf"
+    plots.reliability(conf, y2, preds, val_reliability_pdf)
 
 
 def vcf_get1(
@@ -172,12 +200,27 @@ def get_predictions(conf, pred_file):
     model = models.load_model(conf.nn_hdf5_file)
     strategy = tf.distribute.MirroredStrategy()
 
+    if conf.calibration is not None:
+        cache = conf.dir / f"zarrcache_{conf.num_rows}-rows"
+        data = convert.load_data_cache(cache)
+        convert.check_data(data, conf.tranche, conf.num_rows, conf.num_cols)
+        _, _, _, val_data, val_labels, _ = data
+        with strategy.scope():
+            val_pred = model.predict(val_data)
+        if val_pred.shape[1] != 1:
+            raise NotImplementedError("Only binary predictions are supported")
+        val_pred = val_pred[:, 0]
+        cal = conf.calibration().fit(val_pred, val_labels)
+
     label = list(conf.tranche.keys())[1]
     with open(pred_file, "w") as f:
         print("chrom", "start", "end", f"Pr{{{label}}}", sep="\t", file=f)
         with strategy.scope():
             for coords, vcf_data in vcf_batch_gen:
                 predictions = model.predict_on_batch(vcf_data)
+                if conf.calibration is not None:
+                    # Calibrate the model predictions.
+                    predictions = cal.predict(predictions)
                 for (_, chrom, start, end), pred in zip(coords, predictions):
                     printable_pred = [format(p, ".8f") for p in pred]
                     print(chrom, start, end, *printable_pred, sep="\t", file=f)
@@ -237,6 +280,24 @@ def parse_args():
             help="Convert simulated tree sequences into genotype matrices "
                  "ready for training, and then exit.")
 
+    for p in (eval_parser, apply_parser):
+        def cc_type(cc_str, parser=p):
+            for cc in calibrate.calibration_classes:
+                if cc.__name__ == cc_str:
+                    break
+            else:
+                if cc == "None":
+                    cc = None
+                else:
+                    raise parser.error(f"Invalid calibration method {cc_str}")
+        choices = [cc.__name__ for cc in calibrate.calibration_classes]
+        choices.append("None")
+        p.add_argument(
+                "-C", "--calibration", choices=choices, default=choices[0],
+                type=cc_type,
+                help="Calibrate model prediction probabilities using the "
+                     "specifed method [default=%(default)s].")
+
     eval_parser.add_argument(
             "nn_hdf5_file", metavar="nn.hdf5", type=str,
             help="The trained nerual network model to evaulate.")
@@ -274,8 +335,10 @@ def parse_args():
     elif args.subcommand == "train":
         args.conf.convert_only = args.convert_only
     elif args.subcommand == "eval":
+        args.conf.calibration = args.calibration
         args.conf.nn_hdf5_file = args.nn_hdf5_file
     elif args.subcommand == "apply":
+        args.conf.calibration = args.calibration
         args.conf.plot_only = args.plot_only
         args.conf.nn_hdf5_file = args.nn_hdf5_file
     args.conf.parallelism = args.parallelism

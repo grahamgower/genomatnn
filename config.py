@@ -187,6 +187,21 @@ class Config():
         apply_keys = ["step", "batch_size", "max_missing_genotypes", "min_seg_sites"]
         self._verify_keys_exist(self.apply, apply_keys, "apply.")
 
+    def __getitem__(self, key):
+        key_fields = key.split(".")
+        attr = self.config
+        for k in key_fields:
+            attr = attr.get(k)
+            if attr is None:
+                raise KeyError(f"{self.filename}: {key}: not found.")
+        return attr
+
+    def get(self, key, default=None):
+        try:
+            return self[key]
+        except KeyError:
+            return default
+
     def sample_counts(self):
         """
         Haploid sample numbers for each population.

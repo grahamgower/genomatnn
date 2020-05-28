@@ -5,3 +5,4 @@ zarr
 toml
 tensorflow
 matplotlib
+sklearn

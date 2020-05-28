@@ -1,5 +1,6 @@
 import itertools
 import operator
+import collections
 
 import numpy as np
 import matplotlib
@@ -7,13 +8,16 @@ import matplotlib
 # Don't try to use X11.
 matplotlib.use('Agg')
 
-import matplotlib.pyplot as plt  # NOQA: E402
-from matplotlib.backends.backend_pdf import PdfPages  # NOQA: E402
-from matplotlib.lines import Line2D  # NOQA: E402
+import matplotlib.pyplot as plt  # noqa: E402
+from matplotlib.backends.backend_pdf import PdfPages  # noqa: E402
+from matplotlib.collections import PatchCollection  # noqa: E402
+from matplotlib.patches import Rectangle  # noqa: E402
+from matplotlib.lines import Line2D  # noqa: E402
 from mpl_toolkits.axes_grid1.inset_locator \
-        import zoomed_inset_axes, mark_inset  # NOQA: E402
+        import zoomed_inset_axes, mark_inset  # noqa: E402
 
-import vcf  # NOQA: E402
+import vcf  # noqa: E402
+import calibrate  # noqa: E402
 
 
 def predictions_all_chr(pred_by_chr):
@@ -141,37 +145,26 @@ def esf(a, q, norm=True):
 
 
 def roc(
-        conf, val_labels, val_pred, val_metadata, pdf_file,
+        conf, labels, pred, metadata, pdf_file,
         aspect=10/16, scale=1.5, inset=False):
-
-    assert val_labels.shape == val_pred.shape
-    assert len(val_labels) == len(val_metadata)
 
     ((false_tranche, false_modelspecs),
      (true_tranche, true_modelspecs)) = list(conf.tranche.items())
 
-    tp = val_pred[np.where(val_labels == 1)]
+    tp = pred[np.where(labels == 1)]
     fp_list = []
     for fp_modelspec in false_modelspecs:
-        fp = val_pred[np.where(val_metadata["modelspec"] == fp_modelspec)]
+        fp = pred[np.where(metadata["modelspec"] == fp_modelspec)]
         fp_list.append(fp)
 
-    roc_cfg = conf.eval.get("roc")
-    if roc_cfg is not None:
-        plot_cfg = roc_cfg.get("plot")
-        if plot_cfg is not None:
-            if "aspect" in plot_cfg:
-                aspect = plot_cfg["aspect"]
-            if "scale" in plot_cfg:
-                scale = plot_cfg["scale"]
-            # TODO: get inset from config
+    aspect = conf.get("eval.roc.plot.aspect", aspect)
+    scale = conf.get("eval.roc.plot.scale", scale)
+    # TODO: support the inset for each subplot
+    # inset = conf.get("eval.roc.plot.inset", inset)
 
     pdf = PdfPages(pdf_file)
     fig_w, fig_h = plt.figaspect(aspect)
-    fig_w *= scale
-    fig_h *= scale
-
-    fig, axs = plt.subplots(1, 3, figsize=(fig_w, fig_h))
+    fig, axs = plt.subplots(1, 3, figsize=(scale * fig_w, scale * fig_h))
 
     if len(false_modelspecs) > 1:
         fp_pfx = longest_common_prefix(false_modelspecs)
@@ -274,10 +267,231 @@ def roc(
     axs[1].set_xlabel("Recall: TP/(TP+FN)")
     axs[1].set_ylabel("Precision: TP/(TP+FP)")
 
-    if len(axs) >= 3:
-        axs[2].set_title("Specificity vs. Negative Predictive Value")
-        axs[2].set_xlabel("TNR: TN/(TN+FP)")
-        axs[2].set_ylabel("NPV: TN/(TN+FN)")
+    axs[2].set_title("Specificity vs. Negative Predictive Value")
+    axs[2].set_xlabel("TNR: TN/(TN+FP)")
+    axs[2].set_ylabel("NPV: TN/(TN+FN)")
+
+    fig.tight_layout()
+    pdf.savefig(figure=fig)
+    plt.close(fig)
+    pdf.close()
+
+
+def partition2d(x, y, z, bins):
+    # Add a small value to the max, so that the max data point
+    # contributes to the last bin.
+    xmax = np.max(x) + 1e-9
+    ymax = np.max(y) + 1e-9
+    xitv = xmax / bins
+    yitv = ymax / bins
+
+    binned = collections.defaultdict(list)
+    for xi, yi, zi in zip(x, y, z):
+        _x = xi - (xi % xitv)
+        _y = yi - (yi % yitv)
+        binned[(_x, _y)].append(zi)
+
+    return binned, xitv, yitv
+
+
+def accuracy(
+        conf, labels, pred, metadata, pdf_file,
+        aspect=10/16, scale=1.5, bins=20):
+
+    aspect = conf.get("eval.accuracy.plot.aspect", aspect)
+    scale = conf.get("eval.accuracy.plot.scale", scale)
+    bins = conf.get("eval.accuracy.plot.bins", bins)
+
+    pdf = PdfPages(pdf_file)
+    fig_w, fig_h = plt.figaspect(aspect)
+    fig, ax = plt.subplots(1, 1, figsize=(scale * fig_w, scale * fig_h))
+
+    x = metadata["s"]
+    y = metadata["T_sel"]
+    z = 1 - np.abs(labels - pred)  # accuracy
+
+    binned, xitv, yitv = partition2d(x, y, z, bins)
+
+    boxes = []
+    colours = []
+    for (xi, yi), zi_array in binned.items():
+        r = Rectangle((xi, yi), xitv, yitv)
+        boxes.append(r)
+        colours.append(np.mean(zi_array))
+
+    pc = PatchCollection(boxes, rasterized=True)
+    pc.set_array(np.array(colours))
+    ax.add_collection(pc)
+
+    ax.set_title("Classification accuracy across the parameter space")
+    ax.set_xlabel("$s$")
+    ax.set_ylabel("$T_{sel}$ (years ago)")
+
+    ax.set_xlim([0, bins*xitv])
+    ax.set_ylim([0, bins*yitv])
+
+    fig.colorbar(pc)
+    fig.tight_layout()
+
+    pdf.savefig(figure=fig)
+    plt.close(fig)
+    pdf.close()
+
+
+def confusion1(ax, cm, xticklabels, yticklabels, cbar=True, annotate=True):
+    im = ax.imshow(
+            cm.T, origin="lower", rasterized=True, vmin=0, vmax=1, cmap="Blues")
+    if cbar:
+        ax.figure.colorbar(im, ax=ax, label="Pr(Truth | Prediction)")
+        # cb.ax.yaxis.set_label_position('left')
+        # cb.ax.yaxis.set_ticks_position('left')
+
+    ax.set(xticks=np.arange(cm.shape[0]),
+           yticks=np.arange(cm.shape[1]),
+           xticklabels=xticklabels,
+           yticklabels=yticklabels,
+           # title="Confusion matrix",
+           xlabel="Predicted label",
+           ylabel="True label",
+           )
+
+    if annotate:
+        # Add text annotations.
+        thresh = cm.max() / 2.
+        for i in range(cm.shape[0]):
+            for j in range(cm.shape[1]):
+                ax.text(i, j,
+                        f"{cm[i, j]:.2f}",
+                        ha="center", va="center",
+                        color="white" if cm[i, j] > thresh else "black")
+
+
+def confusion(
+        conf, labels, pred, metadata, pdf_file,
+        aspect=10/16, scale=1.5):
+    """
+    Confusion matrices.
+    """
+
+    aspect = conf.get("eval.confusion.plot.aspect", aspect)
+    scale = conf.get("eval.confusion.plot.scale", scale)
+
+    pdf = PdfPages(pdf_file)
+    fig_w, fig_h = plt.figaspect(aspect)
+    fig, axs = plt.subplots(1, 2, figsize=(scale * fig_w, scale * fig_h))
+
+    modelspecs = list(itertools.chain(*conf.tranche.values()))
+    assert set(modelspecs) == set(np.unique(metadata["modelspec"]))
+
+    n_labels = 2
+    n_modelspecs = len(modelspecs)
+    cm_labels = np.empty(shape=(n_labels, n_labels))
+    cm_modelspecs = np.empty(shape=(n_labels, n_modelspecs))
+
+    # labels x labels
+    for i in range(n_labels):
+        idx = np.where(np.abs(pred-i) < 0.5)[0]
+        n_pred = len(idx)
+        for j in range(n_labels):
+            n_true = len(np.where(labels[idx] == j)[0])
+            cm_labels[i, j] = n_true / n_pred
+
+    # labels x modelspecs
+    for i in range(n_labels):
+        idx = np.where(np.abs(pred-i) < 0.5)[0]
+        n_pred = len(idx)
+        for j in range(n_modelspecs):
+            n_true = len(np.where(metadata["modelspec"][idx] == modelspecs[j])[0])
+            cm_modelspecs[i, j] = n_true / n_pred
+
+    modelspec_pfx = longest_common_prefix(modelspecs)
+    short_modelspecs = [mspec[len(modelspec_pfx):] for mspec in modelspecs]
+    tranch_keys = list(conf.tranche.keys())
+
+    confusion1(axs[0], cm_labels, tranch_keys, tranch_keys, cbar=False)
+    confusion1(axs[1], cm_modelspecs, tranch_keys, short_modelspecs)
+
+    fig.suptitle("Confusion matrices")
+    fig.tight_layout()
+    pdf.savefig(figure=fig)
+    plt.close(fig)
+    pdf.close()
+
+
+def reliability(
+        conf, labels, preds, pdf_file,
+        aspect=10/16, scale=1.5, bins=10):
+    """
+    Reliability plot., aka calibration curve.
+    """
+
+    # Nuisance parameters that set spacing in the histogram.
+    hist_width = round(1.5*len(preds))
+    hist_delta = hist_width - len(preds)
+
+    aspect = conf.get("eval.reliability.plot.aspect", aspect)
+    scale = conf.get("eval.reliability.plot.scale", scale)
+    bins = conf.get("eval.reliability.plot.bins", bins)
+    hist_width = conf.get("eval.reliability.plot.hist_width", hist_width)
+    hist_delta = conf.get("eval.reliability.plot.hist_delta", hist_delta)
+
+    pdf = PdfPages(pdf_file)
+    fig_w, fig_h = plt.figaspect(aspect)
+    fig, axs = plt.subplots(1, 2, figsize=(scale * fig_w, scale * fig_h))
+    ax1, ax2 = axs
+
+    itv = 1.0 / bins
+    binv = np.linspace(0, 1, bins + 1)[:-1]
+
+    colours = plt.get_cmap("tab20").colors
+    fc_colours = [colours[2*i+1] for i in range(len(colours)//2)]
+    ec_colours = [colours[2*i] for i in range(len(colours)//2)]
+    markers = "oxd+^*"
+
+    # Perfect reliability.
+    ax1.plot([0., 1.], [0., 1.], c="lightgray", linestyle="--")
+
+    for j, ((cal_label, p), marker, bfc, bec) in enumerate(zip(
+                            preds, markers, fc_colours, ec_colours)):
+        pbinned = collections.defaultdict(list)
+        tbinned = collections.defaultdict(list)
+        for xi, yi in zip(p, labels):
+            i = xi - (xi % itv)
+            pbinned[i].append(xi)
+            tbinned[i].append(yi)
+
+        nperbin = np.empty(shape=len(binv))
+        accuracy = np.empty(shape=len(binv))
+        binmean = np.empty(shape=len(binv))
+        for i, t in enumerate(binv):
+            accuracy[i] = np.mean(tbinned.get(t, [0]))
+            nperbin[i] = len(tbinned.get(t, []))
+            binmean[i] = np.mean(pbinned.get(t, [np.nan]))
+
+        Z = calibrate.Z_score(p, labels)
+
+        Z_label = "{}, Z={:.3g}".format(cal_label, Z)
+        ax1.plot(
+                binmean, accuracy, c=bec, linestyle="-", linewidth=1.5,
+                markerfacecolor="none", marker=marker, ms=10, mew=2,
+                label=Z_label)
+        ax2.bar(
+                binv + itv * (j + hist_delta) / hist_width, nperbin,
+                width=itv / hist_width, align='edge', linewidth=1.5,
+                facecolor=bfc, edgecolor=bec, label=cal_label)
+
+    _, condition_positive = list(conf.tranche.keys())
+
+    ax1.legend()
+    ax1.set_title("Reliability of model predictions")
+    ax1.set_xlabel(f"Model prediction (Pr{{{condition_positive}}})")
+    ax1.set_ylabel("Proportion of true positives")
+
+    ax2.legend()
+    ax2.set_xlabel(f"Model prediction (Pr{{{condition_positive}}})")
+    ax2.set_ylabel("Counts")
+    ax2.set_title("Histogram of model predictions")
+    ax2.set_yscale('log', nonposy='clip')
 
     fig.tight_layout()
     pdf.savefig(figure=fig)
