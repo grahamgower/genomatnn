@@ -15,6 +15,7 @@ from matplotlib.patches import Rectangle  # noqa: E402
 from matplotlib.lines import Line2D  # noqa: E402
 from mpl_toolkits.axes_grid1.inset_locator \
         import zoomed_inset_axes, mark_inset  # noqa: E402
+from mpl_toolkits import axes_grid1  # noqa: E402
 
 import vcf  # noqa: E402
 import calibrate  # noqa: E402
@@ -496,4 +497,100 @@ def reliability(
     fig.tight_layout()
     pdf.savefig(figure=fig)
     plt.close(fig)
+    pdf.close()
+
+
+def hap_matrix1(
+        A, ax, title, sample_counts, pop_indices, sequence_length,
+        aspect, cmap, rasterized):
+    im = ax.imshow(
+            A, interpolation="none", origin="lower", rasterized=rasterized,
+            # left, right, bottom, top
+            extent=(0, A.shape[1], 0, A.shape[0] / aspect),
+            cmap=cmap, norm=matplotlib.colors.PowerNorm(0.5, vmax=10))
+    cb = ax.figure.colorbar(
+            im, ax=ax, extend="max", shrink=0.5, pad=0.01, fraction=0.025,
+            label="Density of minor alleles")
+    cb.set_ticks([])
+
+    ax.set_title(title)
+    ax.set_ylabel("Genomic position", labelpad=-10)
+    ax.set_yticks([0, ax.get_ylim()[1]])
+    ax.set_yticklabels(["$0\,$kb", f"${sequence_length//1000}\,$kb"])  # noqa: W605
+
+    plt.setp(ax.get_xticklabels(), visible=False)
+    ax.tick_params(axis="x", length=0)
+
+    #
+    # Add population-labels colour bar on a new axis.
+    #
+    divider = axes_grid1.make_axes_locatable(ax)
+    ax_pops = divider.append_axes("bottom", 0.2, pad=0, sharex=ax)
+    ax_pops.set_ylim([0, 1])
+
+    pop_ticks = []
+    boxes = []
+    colours = plt.get_cmap("tab10").colors
+    for index, count in zip(pop_indices.values(), sample_counts.values()):
+        r = Rectangle((index, 0), count, 1)
+        boxes.append(r)
+        pop_ticks.append(index + count/2)
+
+    pc = PatchCollection(boxes, fc=colours, rasterized=rasterized)
+    ax_pops.add_collection(pc)
+
+    ax_pops.set_yticks([])
+    ax_pops.set_yticklabels([])
+    ax_pops.set_xticks(pop_ticks)
+    ax_pops.set_xticklabels(list(pop_indices.keys()))
+    ax_pops.set_xlabel("Haplotypes")
+
+    ax.figure.tight_layout()
+
+
+def hap_matrix(
+        conf, data, pred, metadata, pdf_file, n_examples=10,
+        aspect=5/16, scale=1.0, cmap="Greys", rasterized=False):
+    """
+    Plot haplotype matrices for each modelspec. Plot up to n_examples for each.
+    """
+    assert n_examples >= 1
+    modelspecs = list(itertools.chain(*conf.tranche.values()))
+    modelspec_indexes = collections.defaultdict(list)
+    want_more = set(modelspecs)
+
+    for i in range(len(data)):
+        modelspec = metadata[i]["modelspec"]
+        if modelspec in want_more:
+            modelspec_indexes[modelspec].append(i)
+            if len(modelspec_indexes[modelspec]) == n_examples:
+                want_more.remove(modelspec)
+                if len(want_more) == 0:
+                    break
+
+    _, condition_positive = list(conf.tranche.keys())
+    pdf = PdfPages(pdf_file)
+
+    for i in itertools.chain(*modelspec_indexes.values()):
+        A = data[i]
+        params = metadata[i]
+        p = pred[i]
+        sample_counts = conf.sample_counts()
+        pop_indices = conf.pop_indices()
+
+        fig_w, fig_h = plt.figaspect(aspect)
+        fig, ax = plt.subplots(1, 1, figsize=(scale * fig_w, scale * fig_h))
+
+        title = (f"{params['modelspec']}\n"
+                 f"$T_{{mut}}$={int(round(params['T_mut']))}, "
+                 f"$T_{{sel}}$={int(round(params['T_sel']))}, "
+                 f"$s$={params['s']:.4f}, "
+                 f"Pr{{{condition_positive}}}={p:.4g}")
+        hap_matrix1(
+                A, ax, title, sample_counts, pop_indices, conf.sequence_length,
+                aspect, cmap, rasterized)
+
+        pdf.savefig(figure=fig)
+        plt.close(fig)
+
     pdf.close()

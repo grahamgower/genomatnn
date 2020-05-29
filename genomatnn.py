@@ -8,6 +8,7 @@ import functools
 import concurrent.futures
 import random
 import tempfile
+import pathlib
 
 import numpy as np
 
@@ -81,8 +82,10 @@ def do_eval(conf):
     cache = conf.dir / f"zarrcache_{conf.num_rows}-rows"
     data = convert.load_data_cache(cache)
     convert.check_data(data, conf.tranche, conf.num_rows, conf.num_cols)
-
     _, _, _, val_data, val_labels, val_metadata = data
+
+    plot_dir = pathlib.Path(conf.nn_hdf5_file[:-len(".hdf5")])
+    plot_dir.mkdir(parents=True, exist_ok=True)
 
     logger.debug("Applying tensorflow to validation data...")
     import tfstuff
@@ -105,14 +108,17 @@ def do_eval(conf):
     else:
         val_pred_cal = val_pred
 
-    roc_pdf = conf.nn_hdf5_file[:-len(".hdf5")] + "_roc.pdf"
+    hap_pdf = str(plot_dir / "genotype_matrices.pdf")
+    plots.hap_matrix(conf, val_data, val_pred, val_metadata, hap_pdf)
+
+    roc_pdf = str(plot_dir / "roc.pdf")
     plots.roc(conf, val_labels, val_pred_cal, val_metadata, roc_pdf)
 
-    val_accuracy_pdf = conf.nn_hdf5_file[:-len(".hdf5")] + "_val_accuracy.pdf"
-    plots.accuracy(conf, val_labels, val_pred_cal, val_metadata, val_accuracy_pdf)
+    accuracy_pdf = str(plot_dir / "accuracy.pdf")
+    plots.accuracy(conf, val_labels, val_pred_cal, val_metadata, accuracy_pdf)
 
-    val_confusion_pdf = conf.nn_hdf5_file[:-len(".hdf5")] + "_val_confusion.pdf"
-    plots.confusion(conf, val_labels, val_pred_cal, val_metadata, val_confusion_pdf)
+    confusion_pdf = str(plot_dir / "confusion.pdf")
+    plots.confusion(conf, val_labels, val_pred_cal, val_metadata, confusion_pdf)
 
     # Apply various calibrations to the prediction probabilties.
     # We use only the first half of the validation set for calibrating,
@@ -126,8 +132,8 @@ def do_eval(conf):
         cc_x_pred = cc().fit(x1, y1).predict(x2)
         preds.append((label, cc_x_pred))
 
-    val_reliability_pdf = conf.nn_hdf5_file[:-len(".hdf5")] + "_val_reliability.pdf"
-    plots.reliability(conf, y2, preds, val_reliability_pdf)
+    reliability_pdf = str(plot_dir / "reliability.pdf")
+    plots.reliability(conf, y2, preds, reliability_pdf)
 
 
 def vcf_get1(
