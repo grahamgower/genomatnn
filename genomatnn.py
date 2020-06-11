@@ -29,8 +29,12 @@ logger = logging.getLogger(__name__)
 def _sim_wrapper(args, conf=None):
     modelspec, seed = args
     ts = sim.sim(
-            modelspec, conf.sequence_length, conf.min_allele_frequency,
-            seed=seed, sample_counts=conf.sample_counts())
+        modelspec,
+        conf.sequence_length,
+        conf.min_allele_frequency,
+        seed=seed,
+        sample_counts=conf.sample_counts(),
+    )
     assert ts is not None
     odir = conf.dir / modelspec
     odir.mkdir(parents=True, exist_ok=True)
@@ -47,7 +51,7 @@ def do_sim(conf):
     def sim_func_arg_generator():
         for _ in range(conf.num_reps):
             for spec in modelspecs:
-                yield spec, rng.randrange(1, 2**32)
+                yield spec, rng.randrange(1, 2 ** 32)
 
     with concurrent.futures.ProcessPoolExecutor(parallelism) as ex:
         for _ in ex.map(sim_func, sim_func_arg_generator()):
@@ -59,22 +63,32 @@ def do_train(conf):
     cache = conf.dir / f"zarrcache_{conf.num_rows}-rows"
     # Translate ref_pop and pop_indices to tree sequence population indices.
     ref_pop = conf.pop2tsidx[conf.ref_pop]
-    pop_indices = {conf.pop2tsidx[pop]: idx
-                   for pop, idx in conf.pop_indices().items()}
+    pop_indices = {conf.pop2tsidx[pop]: idx for pop, idx in conf.pop_indices().items()}
     parallelism = conf.parallelism if conf.parallelism > 0 else os.cpu_count()
     data = convert.prepare_training_data(
-            conf.dir, conf.tranche, pop_indices, ref_pop, conf.num_rows,
-            conf.num_cols, rng, parallelism, conf.maf_threshold, cache)
+        conf.dir,
+        conf.tranche,
+        pop_indices,
+        ref_pop,
+        conf.num_rows,
+        conf.num_cols,
+        rng,
+        parallelism,
+        conf.maf_threshold,
+        cache,
+    )
     train_data, train_labels, _, val_data, val_labels, _ = data
     n_train = train_data.shape[0]
     n_val = val_data.shape[0]
     logger.debug(
-            f"Loaded {n_train+n_val} instances with {n_train}/{n_val} "
-            "training/validation split.")
+        f"Loaded {n_train+n_val} instances with {n_train}/{n_val} "
+        "training/validation split."
+    )
     if conf.convert_only:
         return
 
     import tfstuff
+
     tfstuff.train(conf, train_data, train_labels, val_data, val_labels)
 
 
@@ -84,13 +98,14 @@ def do_eval(conf):
     convert.check_data(data, conf.tranche, conf.num_rows, conf.num_cols)
     _, _, _, val_data, val_labels, val_metadata = data
 
-    plot_dir = pathlib.Path(conf.nn_hdf5_file[:-len(".hdf5")])
+    plot_dir = pathlib.Path(conf.nn_hdf5_file[: -len(".hdf5")])
     plot_dir.mkdir(parents=True, exist_ok=True)
 
     logger.debug("Applying tensorflow to validation data...")
     import tfstuff
     import tensorflow as tf
     from tensorflow.keras import models
+
     tfstuff.tf_config(conf.parallelism)
     model = models.load_model(conf.nn_hdf5_file)
     strategy = tf.distribute.MirroredStrategy()
@@ -124,8 +139,8 @@ def do_eval(conf):
     # We use only the first half of the validation set for calibrating,
     # and calculate reliability on the second half.
     n = len(val_pred)
-    x1, y1 = val_pred[:n//2], val_labels[:n//2]
-    x2, y2 = val_pred[n//2:], val_labels[n//2:]
+    x1, y1 = val_pred[: n // 2], val_labels[: n // 2]
+    x2, y2 = val_pred[n // 2 :], val_labels[n // 2 :]
     preds = [("Uncal.", x2)]
     for cc in calibrate.calibration_classes:
         label = cc.__name__
@@ -137,13 +152,26 @@ def do_eval(conf):
 
 
 def vcf_get1(
-        args, samples_file=None, sequence_length=None, num_rows=None,
-        min_seg_sites=None, max_missing=None, maf_thres=None):
+    args,
+    samples_file=None,
+    sequence_length=None,
+    num_rows=None,
+    min_seg_sites=None,
+    max_missing=None,
+    maf_thres=None,
+):
     (vcf_file, chrom, start, end), seed = args
     rng = random.Random(seed)
     pos, A = vcf.vcf2mat(
-            vcf_file, samples_file, chrom, start, end, rng,
-            max_missing_thres=max_missing, maf_thres=maf_thres)
+        vcf_file,
+        samples_file,
+        chrom,
+        start,
+        end,
+        rng,
+        max_missing_thres=max_missing,
+        maf_thres=maf_thres,
+    )
     if len(pos) < min_seg_sites:
         return None
     relative_pos = pos - start
@@ -152,8 +180,17 @@ def vcf_get1(
 
 
 def vcf_batch_generator(
-        coordinates, sample_list, min_seg_sites, max_missing, maf_thres,
-        sequence_length, num_rows, rng, parallelism, batch_size):
+    coordinates,
+    sample_list,
+    min_seg_sites,
+    max_missing,
+    maf_thres,
+    sequence_length,
+    num_rows,
+    rng,
+    parallelism,
+    batch_size,
+):
     icoordinates = iter(coordinates)
     with tempfile.TemporaryDirectory() as tmpdir:
         samples_file = f"{tmpdir}/samples.txt"
@@ -161,17 +198,21 @@ def vcf_batch_generator(
             print(*sample_list, file=f, sep="\n")
 
         vcf_get_func = functools.partial(
-                vcf_get1, samples_file=samples_file,
-                sequence_length=sequence_length, num_rows=num_rows,
-                min_seg_sites=min_seg_sites,
-                max_missing=max_missing, maf_thres=maf_thres)
+            vcf_get1,
+            samples_file=samples_file,
+            sequence_length=sequence_length,
+            num_rows=num_rows,
+            min_seg_sites=min_seg_sites,
+            max_missing=max_missing,
+            maf_thres=maf_thres,
+        )
 
         with concurrent.futures.ProcessPoolExecutor(parallelism) as ex:
             while True:
                 batch_coords = list(itertools.islice(icoordinates, batch_size))
                 if len(batch_coords) == 0:
                     break
-                seeds = [rng.randrange(1, 2**32) for _ in batch_coords]
+                seeds = [rng.randrange(1, 2 ** 32) for _ in batch_coords]
                 pred_coords = []
                 B = []
                 map_res = ex.map(vcf_get_func, zip(batch_coords, seeds))
@@ -189,19 +230,28 @@ def get_predictions(conf, pred_file):
     rng = random.Random(conf.seed)
     logger.debug("Generating window coordinates for vcf data...")
     coordinates = vcf.coordinates(
-            conf.file, conf.chr, conf.sequence_length, conf.apply["step"])
+        conf.file, conf.chr, conf.sequence_length, conf.apply["step"]
+    )
     logger.debug("Setting up data generator...")
     parallelism = conf.parallelism if conf.parallelism > 0 else os.cpu_count()
     vcf_batch_gen = vcf_batch_generator(
-            coordinates, conf.vcf_samples, conf.apply["min_seg_sites"],
-            conf.apply["max_missing_genotypes"], conf.maf_threshold,
-            conf.sequence_length, conf.num_rows, rng, parallelism,
-            conf.apply["batch_size"])
+        coordinates,
+        conf.vcf_samples,
+        conf.apply["min_seg_sites"],
+        conf.apply["max_missing_genotypes"],
+        conf.maf_threshold,
+        conf.sequence_length,
+        conf.num_rows,
+        rng,
+        parallelism,
+        conf.apply["batch_size"],
+    )
 
     logger.debug("Applying tensorflow to vcf data...")
     import tfstuff
     import tensorflow as tf
     from tensorflow.keras import models
+
     tfstuff.tf_config(conf.parallelism)
     model = models.load_model(conf.nn_hdf5_file)
     strategy = tf.distribute.MirroredStrategy()
@@ -233,8 +283,8 @@ def get_predictions(conf, pred_file):
 
 
 def do_apply(conf):
-    pred_file = conf.nn_hdf5_file[:-len(".hdf5")] + "_predictions.txt"
-    pdf_file = conf.nn_hdf5_file[:-len(".hdf5")] + "_predictions.pdf"
+    pred_file = conf.nn_hdf5_file[: -len(".hdf5")] + "_predictions.txt"
+    pdf_file = conf.nn_hdf5_file[: -len(".hdf5")] + "_predictions.pdf"
     if not conf.plot_only:
         get_predictions(conf, pred_file)
     plots.predictions(conf, pred_file, pdf_file)
@@ -242,7 +292,8 @@ def do_apply(conf):
 
 def parse_args():
     parser = argparse.ArgumentParser(
-            description="Simulate, train, and apply a CNN to genotype matrices.")
+        description="Simulate, train, and apply a CNN to genotype matrices."
+    )
     subparsers = parser.add_subparsers(dest="subcommand")
     subparsers.required = True
 
@@ -259,34 +310,55 @@ def parse_args():
     for i, p in enumerate((sim_parser, train_parser, eval_parser, apply_parser)):
 
         p.add_argument(
-                "-j", "--parallelism", default=0, type=int,
-                help="Number of processes or threads to use for parallel things. "
-                     "E.g. simultaneous simulations, or the number of threads "
-                     "used by tensorflow when running on CPU. "
-                     "If set to zero, os.cpu_count() is used. "
-                     "[default=%(default)s].")
+            "-j",
+            "--parallelism",
+            default=0,
+            type=int,
+            help="Number of processes or threads to use for parallel things. "
+            "E.g. simultaneous simulations, or the number of threads "
+            "used by tensorflow when running on CPU. "
+            "If set to zero, os.cpu_count() is used. "
+            "[default=%(default)s].",
+        )
         p.add_argument(
-                "-s", "--seed", default=random.randrange(1, 2**32), type=int,
-                help="Seed for the random number generator [default=%(default)s].")
+            "-s",
+            "--seed",
+            default=random.randrange(1, 2 ** 32),
+            type=int,
+            help="Seed for the random number generator [default=%(default)s].",
+        )
         p.add_argument(
-                "-v", "--verbose", default=False, action="store_true",
-                help="Increase verbosity to debug level.")
+            "-v",
+            "--verbose",
+            default=False,
+            action="store_true",
+            help="Increase verbosity to debug level.",
+        )
         p.add_argument(
-                "conf", metavar="conf.toml", type=str,
-                help="Configuration file.")
+            "conf", metavar="conf.toml", type=str, help="Configuration file."
+        )
 
     sim_parser.add_argument(
-            "-n", "--num-reps", default=1, type=int,
-            help="Number of replicate simulations. For each replicate, one "
-                 "simulation is run for each modelspec. "
-                 "[default=%(default)s]")
+        "-n",
+        "--num-reps",
+        default=1,
+        type=int,
+        help="Number of replicate simulations. For each replicate, one "
+        "simulation is run for each modelspec. "
+        "[default=%(default)s]",
+    )
 
     train_parser.add_argument(
-            "-c", "--convert-only", default=False, action="store_true",
-            help="Convert simulated tree sequences into genotype matrices "
-                 "ready for training, and then exit.")
+        "-c",
+        "--convert-only",
+        default=False,
+        action="store_true",
+        help="Convert simulated tree sequences into genotype matrices "
+        "ready for training, and then exit.",
+    )
 
     for p in (eval_parser, apply_parser):
+
         def cc_type(cc_str, parser=p):
             for cc in calibrate.calibration_classes:
                 if cc.__name__ == cc_str:
@@ -296,31 +368,46 @@ def parse_args():
                     cc = None
                 else:
                     raise parser.error(f"Invalid calibration method {cc_str}")
+
         choices = [cc.__name__ for cc in calibrate.calibration_classes]
         choices.append("None")
         p.add_argument(
-                "-C", "--calibration", choices=choices, default=choices[0],
-                type=cc_type,
-                help="Calibrate model prediction probabilities using the "
-                     "specifed method [default=%(default)s].")
+            "-C",
+            "--calibration",
+            choices=choices,
+            default=choices[0],
+            type=cc_type,
+            help="Calibrate model prediction probabilities using the "
+            "specifed method [default=%(default)s].",
+        )
 
     eval_parser.add_argument(
-            "nn_hdf5_file", metavar="nn.hdf5", type=str,
-            help="The trained nerual network model to evaulate.")
+        "nn_hdf5_file",
+        metavar="nn.hdf5",
+        type=str,
+        help="The trained nerual network model to evaulate.",
+    )
 
     apply_parser.add_argument(
-            "-p", "--plot-only", default=False, action="store_true",
-            help="Just make the plots.")
+        "-p",
+        "--plot-only",
+        default=False,
+        action="store_true",
+        help="Just make the plots.",
+    )
     apply_parser.add_argument(
-            "nn_hdf5_file", metavar="nn.hdf5", type=str,
-            help="The trained nerual network model to apply.")
+        "nn_hdf5_file",
+        metavar="nn.hdf5",
+        type=str,
+        help="The trained nerual network model to apply.",
+    )
 
     args = parser.parse_args()
     args.conf = config.Config(args.conf)
 
     if args.parallelism > 0:
         # Set the number of threads used by openblas, MKL, etc.
-        os.environ['OMP_NUM_THREADS'] = str(args.parallelism)
+        os.environ["OMP_NUM_THREADS"] = str(args.parallelism)
 
     # Pin threads to CPUs when using tensorflow MKL builds.
     if args.verbose:

@@ -19,14 +19,11 @@ def sample_phasing(vcf, sample_list):
         with open(samples_file, "w") as f:
             print(*sample_list, file=f, sep="\n")
 
-        cmd = ["bcftools", "query",
-               "-S", samples_file,
-               "-f", "[%GT\t]\\n",
-               vcf]
+        cmd = ["bcftools", "query", "-S", samples_file, "-f", "[%GT\t]\\n", vcf]
 
         with subprocess.Popen(
-                cmd, bufsize=1, text=True,
-                stdout=subprocess.PIPE, stderr=subprocess.PIPE) as p:
+            cmd, bufsize=1, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE
+        ) as p:
             for line in p.stdout:
                 gt_str_list = line.split()
                 for i, gt_str in enumerate(gt_str_list):
@@ -54,12 +51,12 @@ def contig_lengths(vcf):
     contigs = []
     cmd = ["bcftools", "view", "-h", vcf]
     with subprocess.Popen(
-            cmd, bufsize=1, text=True,
-            stdout=subprocess.PIPE, stderr=subprocess.PIPE) as p:
+        cmd, bufsize=1, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE
+    ) as p:
         for line in p.stdout:
             if line.startswith("##contig="):
                 line = line.rstrip()
-                line = line[len("##contig=<"): -1]
+                line = line[len("##contig=<") : -1]
                 cline = dict()
                 for field in line.split(","):
                     try:
@@ -85,8 +82,16 @@ def contig_lengths(vcf):
 
 
 def vcf2mat(
-        vcf, samples_file, chrom, start, end, rng,
-        max_missing_thres=None, maf_thres=None, unphase=True):
+    vcf,
+    samples_file,
+    chrom,
+    start,
+    end,
+    rng,
+    max_missing_thres=None,
+    maf_thres=None,
+    unphase=True,
+):
     """
     Extract a genotype matrix from ``vcf`` for the samples in file ``samples``
     and the genomic region defined by ``chrom:start-end``. ``rng`` is a random
@@ -101,13 +106,19 @@ def vcf2mat(
     0 and 1 coding is randomly assigned.
     """
 
-    cmd = ["bcftools", "query",
-           "-S", samples_file,
-           "-r", f"{chrom}:{start}-{end}",
-           "-e", "TYPE!='snp'",  # Exclude non-SNPs.
-           "-f", "%POS\\t%ALT[\\t%GT]\\n",
-           vcf
-           ]
+    cmd = [
+        "bcftools",
+        "query",
+        "-S",
+        samples_file,
+        "-r",
+        f"{chrom}:{start}-{end}",
+        "-e",
+        "TYPE!='snp'",  # Exclude non-SNPs.
+        "-f",
+        "%POS\\t%ALT[\\t%GT]\\n",
+        vcf,
+    ]
 
     def g2i(gt_str):
         """
@@ -125,8 +136,8 @@ def vcf2mat(
     gt = []
 
     with subprocess.Popen(
-            cmd, bufsize=1, text=True,
-            stdout=subprocess.PIPE, stderr=subprocess.PIPE) as p:
+        cmd, bufsize=1, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE
+    ) as p:
         for line in p.stdout:
             fields = line.split()
             _pos = int(fields[0])
@@ -144,8 +155,9 @@ def vcf2mat(
             _gt = list(itertools.chain(*map(g2i, fields[2:])))
             allele_counts = collections.Counter(_gt)
 
-            if max_missing_thres is not None and \
-                    allele_counts[-1] > max_missing_thres * len(_gt):
+            if max_missing_thres is not None and allele_counts[
+                -1
+            ] > max_missing_thres * len(_gt):
                 continue
 
             if maf_thres is not None:
@@ -156,8 +168,9 @@ def vcf2mat(
 
             # Polarise 0 and 1 in genotype matrix by major allele frequency.
             # If allele counts are the same, randomly choose a major allele.
-            if allele_counts[1] > allele_counts[0] or \
-                    (allele_counts[1] == allele_counts[0] and rng.random() > 0.5):
+            if allele_counts[1] > allele_counts[0] or (
+                allele_counts[1] == allele_counts[0] and rng.random() > 0.5
+            ):
                 _gt = [flip[g] for g in _gt]
 
             pos.append(_pos)
@@ -209,29 +222,35 @@ def coordinates(vcf_files, chr_list, window, step, one_based=True, closed=True):
         if chrlen is None:
             raise RuntimeError(f"{vcf}: couldn't find chromosome '{chrom}'")
 
-        starts = np.arange(0, chrlen-window, step) + (1*one_based)
-        ends = starts + window - (1*closed)
-        coords.extend((vcf, chrom, start, end)
-                      for start, end in zip(starts, ends))
+        starts = np.arange(0, chrlen - window, step) + (1 * one_based)
+        ends = starts + window - (1 * closed)
+        coords.extend((vcf, chrom, start, end) for start, end in zip(starts, ends))
     return coords
 
 
 def parse_args():
     import argparse
-    parser = argparse.ArgumentParser(
-            description="Extract genotype matrix from a vcf.")
+
+    parser = argparse.ArgumentParser(description="Extract genotype matrix from a vcf.")
     parser.add_argument("--chrom", type=str, required=True, help="Chromosome")
     parser.add_argument("--start", type=int, required=True, help="Start coordinate")
     parser.add_argument("--end", type=int, required=True, help="End coordinate")
     parser.add_argument(
-            "--samples", metavar="samples.txt",
-            help="File containing list of samples.")
+        "--samples", metavar="samples.txt", help="File containing list of samples."
+    )
     parser.add_argument(
-            "--maf-thres", metavar="MAF", type=float, default=0.05,
-            help="Exclude SNPs with minor allele frequency < MAF [%(default)s].")
+        "--maf-thres",
+        metavar="MAF",
+        type=float,
+        default=0.05,
+        help="Exclude SNPs with minor allele frequency < MAF [%(default)s].",
+    )
     parser.add_argument(
-            "--num-rows", type=int, default=32,
-            help="Resize genotype matrices to have this many rows [%(default)s].")
+        "--num-rows",
+        type=int,
+        default=32,
+        help="Resize genotype matrices to have this many rows [%(default)s].",
+    )
     parser.add_argument("vcf", metavar="in.vcf", help="Input vcf/bcf.")
     return parser.parse_args()
 
@@ -240,10 +259,15 @@ if __name__ == "__main__":
     args = parse_args()
     rng = random.Random(1234)
     pos, gt = vcf2mat(
-            vcf=args.vcf, samples=args.samples, chrom=args.chrom,
-            start=args.start, end=args.end, rng=rng,
-            max_missing_thres=0.1, maf_thres=args.maf_thres,
-            )
+        vcf=args.vcf,
+        samples=args.samples,
+        chrom=args.chrom,
+        start=args.start,
+        end=args.end,
+        rng=rng,
+        max_missing_thres=0.1,
+        maf_thres=args.maf_thres,
+    )
     relative_pos = pos - args.start
     sequence_length = args.end - args.start
     gt = resize(relative_pos, gt, sequence_length, args.num_rows)

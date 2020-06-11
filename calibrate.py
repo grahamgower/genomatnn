@@ -23,6 +23,7 @@ class Beta(object):
     Beta calibration (via logisitic regression).
     Kull et al. (2017), http://proceedings.mlr.press/v54/kull17a.html
     """
+
     def fit(self, x, y):
 
         # Exclude predictions that are too confident.
@@ -30,13 +31,14 @@ class Beta(object):
         idx = np.where(np.bitwise_and(0 < x, x < 1))[0]
         if len(x) != len(idx):
             warnings.warn(
-                    "BetaCalibration: excluding values at the edge of support "
-                    f"({len(x)-len(idx)} of {len(x)}).")
+                "BetaCalibration: excluding values at the edge of support "
+                f"({len(x)-len(idx)} of {len(x)})."
+            )
         x = x[idx]
         y = y[idx]
 
         s_a = np.log(x)
-        s_b = -np.log(1.-x)
+        s_b = -np.log(1.0 - x)
         s = np.column_stack([s_a, s_b])
         lr = LogisticRegression().fit(s, y)
         a, b, c = lr.coef_[0][0], lr.coef_[0][1], lr.intercept_[0]
@@ -59,8 +61,8 @@ class Beta(object):
         return self
 
     def predict(self, x):
-        u = np.exp(self.c) * x**self.a
-        v = (1 - x)**self.b
+        u = np.exp(self.c) * x ** self.a
+        v = (1 - x) ** self.b
         return u / (u + v)
 
 
@@ -68,6 +70,7 @@ class Isotonic(object):
     """
     Isotonic regression.
     """
+
     def __init__(self):
         self.ir = IsotonicRegression(out_of_bounds="clip")
 
@@ -84,6 +87,7 @@ class Platt(object):
     Platt scaling.
     https://github.com/scikit-learn/scikit-learn/blob/1495f6924/sklearn/calibration.py#L403
     """
+
     def fit(self, x, y):
         self.a, self.b = _sigmoid_calibration(x, y)
         return self

@@ -6,15 +6,17 @@ import numpy as np
 import matplotlib
 
 # Don't try to use X11.
-matplotlib.use('Agg')
+matplotlib.use("Agg")
 
 import matplotlib.pyplot as plt  # noqa: E402
 from matplotlib.backends.backend_pdf import PdfPages  # noqa: E402
 from matplotlib.collections import PatchCollection  # noqa: E402
 from matplotlib.patches import Rectangle  # noqa: E402
 from matplotlib.lines import Line2D  # noqa: E402
-from mpl_toolkits.axes_grid1.inset_locator \
-        import zoomed_inset_axes, mark_inset  # noqa: E402
+from mpl_toolkits.axes_grid1.inset_locator import (  # noqa: E402
+    zoomed_inset_axes,
+    mark_inset,
+)
 from mpl_toolkits import axes_grid1  # noqa: E402
 
 import vcf  # noqa: E402
@@ -38,8 +40,8 @@ def predictions_one_chr(fig, ax, header, chrom, preds, chrlen, p_thres=0.9):
     sz1 = [10, 10, 10]
     sz2 = [20, 10, 10]
 
-    ax.hlines(p_thres, -0, chrlen, linestyle='--', color="gray", lw=0.5)
-    ax.grid(linestyle='-', color="gray", lw=0.1)
+    ax.hlines(p_thres, -0, chrlen, linestyle="--", color="gray", lw=0.5)
+    ax.grid(linestyle="-", color="gray", lw=0.1)
 
     start = header[1]
     end = header[2]
@@ -50,11 +52,25 @@ def predictions_one_chr(fig, ax, header, chrom, preds, chrlen, p_thres=0.9):
     idx2 = np.where(np.logical_not(p > p_thres))
     i = 0
     ax.scatter(
-            midpos[idx1], p[idx1], edgecolor=ec[i], facecolor=fc[i],
-            marker=sym2[i], label=None, s=sz2[i], lw=0.5)
+        midpos[idx1],
+        p[idx1],
+        edgecolor=ec[i],
+        facecolor=fc[i],
+        marker=sym2[i],
+        label=None,
+        s=sz2[i],
+        lw=0.5,
+    )
     ax.scatter(
-            midpos[idx2], p[idx2], edgecolor=ec2[i], facecolor=fc2[i],
-            marker=sym[i], label=label, s=sz1[i], lw=0.5)
+        midpos[idx2],
+        p[idx2],
+        edgecolor=ec2[i],
+        facecolor=fc2[i],
+        marker=sym[i],
+        label=label,
+        s=sz1[i],
+        lw=0.5,
+    )
     ax.set_ylabel(label)
 
     xt_interval = 1e7
@@ -63,7 +79,7 @@ def predictions_one_chr(fig, ax, header, chrom, preds, chrlen, p_thres=0.9):
     if chrlen > 2e8:
         xt_interval *= 2
     xticks = np.arange(xt_interval, chrlen, xt_interval)
-    xlabels = [str(int(x/1e6))+" mbp" for x in xticks]
+    xlabels = [str(int(x / 1e6)) + " mbp" for x in xticks]
     ax.set_xticks(xticks)
     ax.set_xticklabels(xlabels)
     ax.set_xlim([0, chrlen])
@@ -78,8 +94,9 @@ def load_predictions(pred_file, max_chr_name_len=128):
     with open(pred_file) as f:
         # header is: chrom, start, end, Pr(X), ...
         header = next(f).split()
-        dtype = [(header[0], chr_dtype), (header[1], int), (header[2], int)] + \
-                [(h, float) for h in header[3:]]
+        dtype = [(header[0], chr_dtype), (header[1], int), (header[2], int)] + [
+            (h, float) for h in header[3:]
+        ]
         preds = np.loadtxt(f, dtype=dtype)
     preds_by_chr = dict()
     for k, g in itertools.groupby(preds, operator.itemgetter(0)):
@@ -87,22 +104,19 @@ def load_predictions(pred_file, max_chr_name_len=128):
     return header, preds_by_chr
 
 
-def predictions(conf, pred_file, pdf_file, aspect=9/16, scale=1.0):
+def predictions(conf, pred_file, pdf_file, aspect=9 / 16, scale=1.0):
     header, preds_by_chr = load_predictions(pred_file)
     chrlen = dict(vcf.contig_lengths(conf.file[0]))
 
     for chrom in preds_by_chr.keys():
         if chrom not in chrlen:
             raise RuntimeError(
-                    f"{pred_file}: chromosome '{chrom}' not found in vcf header "
-                    f"of {conf.file[0]}")
+                f"{pred_file}: chromosome '{chrom}' not found in vcf header "
+                f"of {conf.file[0]}"
+            )
 
-    plot_cfg = conf.apply.get("plot")
-    if plot_cfg is not None:
-        if "aspect" in plot_cfg:
-            aspect = plot_cfg["aspect"]
-        if "scale" in plot_cfg:
-            scale = plot_cfg["scale"]
+    aspect = conf.get("apply.plot.aspect", aspect)
+    scale = conf.get("apply.plot.scale", scale)
 
     pdf = PdfPages(pdf_file)
     fig_w, fig_h = plt.figaspect(aspect)
@@ -145,12 +159,12 @@ def esf(a, q, norm=True):
     return sf
 
 
-def roc(
-        conf, labels, pred, metadata, pdf_file,
-        aspect=10/16, scale=1.5, inset=False):
+def roc(conf, labels, pred, metadata, pdf_file, aspect=10 / 16, scale=1.5, inset=False):
 
-    ((false_tranche, false_modelspecs),
-     (true_tranche, true_modelspecs)) = list(conf.tranche.items())
+    (
+        (condition_negative, false_modelspecs),
+        (condition_positive, true_modelspecs),
+    ) = list(conf.tranche.items())
 
     tp = pred[np.where(labels == 1)]
     fp_list = []
@@ -158,6 +172,8 @@ def roc(
         fp = pred[np.where(metadata["modelspec"] == fp_modelspec)]
         fp_list.append(fp)
 
+    aspect = conf.get("eval.plot.aspect", aspect)
+    scale = conf.get("eval.plot.scale", scale)
     aspect = conf.get("eval.roc.plot.aspect", aspect)
     scale = conf.get("eval.roc.plot.scale", scale)
     # TODO: support the inset for each subplot
@@ -169,7 +185,7 @@ def roc(
 
     if len(false_modelspecs) > 1:
         fp_pfx = longest_common_prefix(false_modelspecs)
-        fp_labels = [spec[len(fp_pfx):] for spec in false_modelspecs]
+        fp_labels = [spec[len(fp_pfx) :] for spec in false_modelspecs]
     else:
         fp_labels = false_modelspecs
 
@@ -182,8 +198,8 @@ def roc(
     q = np.linspace(0, 1, 101)
     tpr = esf(tp, q)
 
-    prop_cycle = plt.rcParams['axes.prop_cycle']
-    colours = prop_cycle.by_key()['color']
+    prop_cycle = plt.rcParams["axes.prop_cycle"]
+    colours = prop_cycle.by_key()["color"]
     linestyles = ["-", "--", ":", "-."]
     markers = ".1s*P"
 
@@ -193,8 +209,8 @@ def roc(
         axs[0].plot(fpr, tpr, color=c, linestyle=ls, label=label)
         if inset:
             ax0_inset.plot(fpr, tpr, color=c, linestyle=ls)
-        for i, ch in zip((50, 90), ('o', 'x')):
-            if ch == 'x':
+        for i, ch in zip((50, 90), ("o", "x")):
+            if ch == "x":
                 ec = "none"
                 fc = c
             else:
@@ -226,16 +242,32 @@ def roc(
 
     handles, _ = axs[0].get_legend_handles_labels()
     handles.extend(
-            [Line2D(
-                [0], [0], marker='o', label='p > 0.50', c="none",
-                markerfacecolor='none', markeredgecolor='k', markersize=10),
-             Line2D(
-                 [0], [0], marker='x', label='p > 0.90', c="none",
-                 markerfacecolor='k', markeredgecolor='k', markersize=10)
-             ])
+        [
+            Line2D(
+                [0],
+                [0],
+                marker="o",
+                c="none",
+                markerfacecolor="none",
+                markeredgecolor="k",
+                markersize=10,
+                label=f"Pr{{{condition_positive}}} > 0.50",
+            ),
+            Line2D(
+                [0],
+                [0],
+                marker="x",
+                c="none",
+                markerfacecolor="k",
+                markeredgecolor="k",
+                markersize=10,
+                label=f"Pr{{{condition_positive}}} > 0.90",
+            ),
+        ]
+    )
     axs[0].legend(
-            title="Condition negative:", handles=handles, framealpha=1,
-            loc="lower right")
+        title="Condition negative:", handles=handles, framealpha=1, loc="lower right"
+    )
 
     for ax in axs:
         # xlim = ax.get_xlim()
@@ -244,15 +276,15 @@ def roc(
         ax.set_xlim([-0.05, 1.05])
         ax.set_ylim([-0.05, 1.05])
 
-        itv = 0.05
+        itv = 0.1
         ax.set_xticks(np.arange(0, 1, itv), minor=True)
         ax.set_yticks(np.arange(0, 1, itv), minor=True)
-        ax.grid(which="both", linestyle='-', color="gray", lw=0.1)
+        ax.grid(which="both", linestyle="-", color="lightgray", lw=0.5)
 
     if inset:
         ax0_inset.set_xticks(np.arange(*ax0_inset.get_xlim(), itv))
         ax0_inset.set_yticks(np.arange(*ax0_inset.get_ylim(), itv))
-        ax0_inset.grid(which="major", linestyle='-', color="gray", lw=0.1)
+        ax0_inset.grid(which="major", linestyle="-", color="gray", lw=0.1)
         plt.setp(ax0_inset.get_xticklabels(), visible=False)
         plt.setp(ax0_inset.get_yticklabels(), visible=False)
 
@@ -268,7 +300,8 @@ def roc(
     axs[1].set_xlabel("Recall: TP/(TP+FN)")
     axs[1].set_ylabel("Precision: TP/(TP+FP)")
 
-    axs[2].set_title("Specificity vs. Negative Predictive Value")
+    # axs[2].set_title("Specificity vs. Negative Predictive Value")
+    axs[2].set_title("TNR-NPR")
     axs[2].set_xlabel("TNR: TN/(TN+FP)")
     axs[2].set_ylabel("NPV: TN/(TN+FN)")
 
@@ -296,9 +329,11 @@ def partition2d(x, y, z, bins):
 
 
 def accuracy(
-        conf, labels, pred, metadata, pdf_file,
-        aspect=10/16, scale=1.5, bins=20):
+    conf, labels, pred, metadata, pdf_file, aspect=10 / 16, scale=1.5, bins=20
+):
 
+    aspect = conf.get("eval.plot.aspect", aspect)
+    scale = conf.get("eval.plot.scale", scale)
     aspect = conf.get("eval.accuracy.plot.aspect", aspect)
     scale = conf.get("eval.accuracy.plot.scale", scale)
     bins = conf.get("eval.accuracy.plot.bins", bins)
@@ -324,12 +359,12 @@ def accuracy(
     pc.set_array(np.array(colours))
     ax.add_collection(pc)
 
-    ax.set_title("Classification accuracy across the parameter space")
+    ax.set_title("Accuracy")
     ax.set_xlabel("$s$")
     ax.set_ylabel("$T_{sel}$ (years ago)")
 
-    ax.set_xlim([0, bins*xitv])
-    ax.set_ylim([0, bins*yitv])
+    ax.set_xlim([0, bins * xitv])
+    ax.set_ylim([0, bins * yitv])
 
     fig.colorbar(pc)
     fig.tight_layout()
@@ -340,40 +375,44 @@ def accuracy(
 
 
 def confusion1(ax, cm, xticklabels, yticklabels, cbar=True, annotate=True):
-    im = ax.imshow(
-            cm.T, origin="lower", rasterized=True, vmin=0, vmax=1, cmap="Blues")
+    im = ax.imshow(cm.T, origin="lower", rasterized=True, vmin=0, vmax=1, cmap="Blues")
     if cbar:
         ax.figure.colorbar(im, ax=ax, label="Pr(Truth | Prediction)")
         # cb.ax.yaxis.set_label_position('left')
         # cb.ax.yaxis.set_ticks_position('left')
 
-    ax.set(xticks=np.arange(cm.shape[0]),
-           yticks=np.arange(cm.shape[1]),
-           xticklabels=xticklabels,
-           yticklabels=yticklabels,
-           # title="Confusion matrix",
-           xlabel="Predicted label",
-           ylabel="True label",
-           )
+    ax.set(
+        xticks=np.arange(cm.shape[0]),
+        yticks=np.arange(cm.shape[1]),
+        xticklabels=xticklabels,
+        yticklabels=yticklabels,
+        # title="Confusion matrix",
+        xlabel="Predicted label",
+        ylabel="True label",
+    )
 
     if annotate:
         # Add text annotations.
-        thresh = cm.max() / 2.
+        thresh = cm.max() / 2.0
         for i in range(cm.shape[0]):
             for j in range(cm.shape[1]):
-                ax.text(i, j,
-                        f"{cm[i, j]:.2f}",
-                        ha="center", va="center",
-                        color="white" if cm[i, j] > thresh else "black")
+                ax.text(
+                    i,
+                    j,
+                    f"{cm[i, j]:.2f}",
+                    ha="center",
+                    va="center",
+                    color="white" if cm[i, j] > thresh else "black",
+                )
 
 
-def confusion(
-        conf, labels, pred, metadata, pdf_file,
-        aspect=10/16, scale=1.5):
+def confusion(conf, labels, pred, metadata, pdf_file, aspect=10 / 16, scale=1.5):
     """
     Confusion matrices.
     """
 
+    aspect = conf.get("eval.plot.aspect", aspect)
+    scale = conf.get("eval.plot.scale", scale)
     aspect = conf.get("eval.confusion.plot.aspect", aspect)
     scale = conf.get("eval.confusion.plot.scale", scale)
 
@@ -391,7 +430,7 @@ def confusion(
 
     # labels x labels
     for i in range(n_labels):
-        idx = np.where(np.abs(pred-i) < 0.5)[0]
+        idx = np.where(np.abs(pred - i) < 0.5)[0]
         n_pred = len(idx)
         for j in range(n_labels):
             n_true = len(np.where(labels[idx] == j)[0])
@@ -399,14 +438,14 @@ def confusion(
 
     # labels x modelspecs
     for i in range(n_labels):
-        idx = np.where(np.abs(pred-i) < 0.5)[0]
+        idx = np.where(np.abs(pred - i) < 0.5)[0]
         n_pred = len(idx)
         for j in range(n_modelspecs):
             n_true = len(np.where(metadata["modelspec"][idx] == modelspecs[j])[0])
             cm_modelspecs[i, j] = n_true / n_pred
 
     modelspec_pfx = longest_common_prefix(modelspecs)
-    short_modelspecs = [mspec[len(modelspec_pfx):] for mspec in modelspecs]
+    short_modelspecs = [mspec[len(modelspec_pfx) :] for mspec in modelspecs]
     tranch_keys = list(conf.tranche.keys())
 
     confusion1(axs[0], cm_labels, tranch_keys, tranch_keys, cbar=False)
@@ -419,16 +458,17 @@ def confusion(
     pdf.close()
 
 
-def reliability(
-        conf, labels, preds, pdf_file,
-        aspect=10/16, scale=1.5, bins=10):
+def reliability(conf, labels, preds, pdf_file, aspect=10 / 16, scale=1.5, bins=10):
     """
     Reliability plot., aka calibration curve.
     """
 
     # Nuisance parameters that set spacing in the histogram.
-    hist_width = round(1.5*len(preds))
+    hist_width = round(1.5 * len(preds))
     hist_delta = hist_width - len(preds)
+
+    aspect = conf.get("eval.plot.aspect", aspect)
+    scale = conf.get("eval.plot.scale", scale)
 
     aspect = conf.get("eval.reliability.plot.aspect", aspect)
     scale = conf.get("eval.reliability.plot.scale", scale)
@@ -445,15 +485,16 @@ def reliability(
     binv = np.linspace(0, 1, bins + 1)[:-1]
 
     colours = plt.get_cmap("tab20").colors
-    fc_colours = [colours[2*i+1] for i in range(len(colours)//2)]
-    ec_colours = [colours[2*i] for i in range(len(colours)//2)]
+    fc_colours = [colours[2 * i + 1] for i in range(len(colours) // 2)]
+    ec_colours = [colours[2 * i] for i in range(len(colours) // 2)]
     markers = "oxd+^*"
 
     # Perfect reliability.
-    ax1.plot([0., 1.], [0., 1.], c="lightgray", linestyle="--")
+    ax1.plot([0.0, 1.0], [0.0, 1.0], c="lightgray", linestyle="--")
 
-    for j, ((cal_label, p), marker, bfc, bec) in enumerate(zip(
-                            preds, markers, fc_colours, ec_colours)):
+    for j, ((cal_label, p), marker, bfc, bec) in enumerate(
+        zip(preds, markers, fc_colours, ec_colours)
+    ):
         pbinned = collections.defaultdict(list)
         tbinned = collections.defaultdict(list)
         for xi, yi in zip(p, labels):
@@ -473,13 +514,27 @@ def reliability(
 
         Z_label = "{}, Z={:.3g}".format(cal_label, Z)
         ax1.plot(
-                binmean, accuracy, c=bec, linestyle="-", linewidth=1.5,
-                markerfacecolor="none", marker=marker, ms=10, mew=2,
-                label=Z_label)
+            binmean,
+            accuracy,
+            c=bec,
+            linestyle="-",
+            linewidth=1.5,
+            markerfacecolor="none",
+            marker=marker,
+            ms=10,
+            mew=2,
+            label=Z_label,
+        )
         ax2.bar(
-                binv + itv * (j + hist_delta) / hist_width, nperbin,
-                width=itv / hist_width, align='edge', linewidth=1.5,
-                facecolor=bfc, edgecolor=bec, label=cal_label)
+            binv + itv * (j + hist_delta) / hist_width,
+            nperbin,
+            width=itv / hist_width,
+            align="edge",
+            linewidth=1.5,
+            facecolor=bfc,
+            edgecolor=bec,
+            label=cal_label,
+        )
 
     _, condition_positive = list(conf.tranche.keys())
 
@@ -492,7 +547,7 @@ def reliability(
     ax2.set_xlabel(f"Model prediction (Pr{{{condition_positive}}})")
     ax2.set_ylabel("Counts")
     ax2.set_title("Histogram of model predictions")
-    ax2.set_yscale('log', nonposy='clip')
+    ax2.set_yscale("log", nonposy="clip")
 
     fig.tight_layout()
     pdf.savefig(figure=fig)
@@ -501,20 +556,34 @@ def reliability(
 
 
 def hap_matrix1(
-        A, ax, title, sample_counts, pop_indices, sequence_length,
-        aspect, cmap, rasterized):
+    A, ax, title, sample_counts, pop_indices, sequence_length, aspect, cmap, rasterized
+):
     im = ax.imshow(
-            A, interpolation="none", origin="lower", rasterized=rasterized,
-            # left, right, bottom, top
-            extent=(0, A.shape[1], 0, A.shape[0] / aspect),
-            cmap=cmap, norm=matplotlib.colors.PowerNorm(0.5, vmax=10))
+        A,
+        interpolation="none",
+        origin="lower",
+        rasterized=rasterized,
+        # left, right, bottom, top
+        extent=(0, A.shape[1], 0, A.shape[0] / aspect),
+        cmap=cmap,
+        norm=matplotlib.colors.PowerNorm(0.5, vmax=10),
+    )
+    shrink = 1
     cb = ax.figure.colorbar(
-            im, ax=ax, extend="max", shrink=0.5, pad=0.01, fraction=0.025,
-            label="Density of minor alleles")
+        im,
+        ax=ax,
+        extend="max",
+        shrink=shrink,
+        pad=shrink * 0.05,
+        # pad=0.01,
+        # fraction=0.025,
+        fraction=shrink * 0.10,
+        label="Density of minor alleles",
+    )
     cb.set_ticks([])
 
     ax.set_title(title)
-    ax.set_ylabel("Genomic position", labelpad=-10)
+    ax.set_ylabel("Genomic position")  # , labelpad=-10)
     ax.set_yticks([0, ax.get_ylim()[1]])
     ax.set_yticklabels(["$0\,$kb", f"${sequence_length//1000}\,$kb"])  # noqa: W605
 
@@ -534,7 +603,7 @@ def hap_matrix1(
     for index, count in zip(pop_indices.values(), sample_counts.values()):
         r = Rectangle((index, 0), count, 1)
         boxes.append(r)
-        pop_ticks.append(index + count/2)
+        pop_ticks.append(index + count / 2)
 
     pc = PatchCollection(boxes, fc=colours, rasterized=rasterized)
     ax_pops.add_collection(pc)
@@ -545,12 +614,22 @@ def hap_matrix1(
     ax_pops.set_xticklabels(list(pop_indices.keys()))
     ax_pops.set_xlabel("Haplotypes")
 
+    # ax.figure.subplots_adjust(top=0.8)
     ax.figure.tight_layout()
 
 
 def hap_matrix(
-        conf, data, pred, metadata, pdf_file, n_examples=10,
-        aspect=5/16, scale=1.0, cmap="Greys", rasterized=False):
+    conf,
+    data,
+    pred,
+    metadata,
+    pdf_file,
+    n_examples=10,
+    aspect=5 / 16,
+    scale=1.0,
+    cmap="Greys",
+    rasterized=False,
+):
     """
     Plot haplotype matrices for each modelspec. Plot up to n_examples for each.
     """
@@ -568,6 +647,10 @@ def hap_matrix(
                 if len(want_more) == 0:
                     break
 
+    # aspect = conf.get("eval.plot.aspect", aspect)
+    scale = conf.get("eval.plot.scale", scale)
+    scale = conf.get("eval.genotype_matrices.plot.scale", scale)
+
     _, condition_positive = list(conf.tranche.keys())
     pdf = PdfPages(pdf_file)
 
@@ -581,14 +664,24 @@ def hap_matrix(
         fig_w, fig_h = plt.figaspect(aspect)
         fig, ax = plt.subplots(1, 1, figsize=(scale * fig_w, scale * fig_h))
 
-        title = (f"{params['modelspec']}\n"
-                 f"$T_{{mut}}$={int(round(params['T_mut']))}, "
-                 f"$T_{{sel}}$={int(round(params['T_sel']))}, "
-                 f"$s$={params['s']:.4f}, "
-                 f"Pr{{{condition_positive}}}={p:.4g}")
+        title = (
+            f"{params['modelspec']}\n"
+            f"$T_{{mut}}$={int(round(params['T_mut']))}, "
+            f"$T_{{sel}}$={int(round(params['T_sel']))}, "
+            f"$s$={params['s']:.4f}, "
+            f"Pr{{{condition_positive}}}={p:.4g}"
+        )
         hap_matrix1(
-                A, ax, title, sample_counts, pop_indices, conf.sequence_length,
-                aspect, cmap, rasterized)
+            A,
+            ax,
+            title,
+            sample_counts,
+            pop_indices,
+            conf.sequence_length,
+            aspect,
+            cmap,
+            rasterized,
+        )
 
         pdf.savefig(figure=fig)
         plt.close(fig)

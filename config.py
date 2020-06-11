@@ -21,7 +21,8 @@ class _CLIFormatter(logging.Formatter):
         if record.levelno == logging.WARNING and len(record.args) > 0:
             # trim the ugly warnings.warn message
             match = re.search(
-                    r"Warning:\s*(.*?)\s*warnings.warn\(", record.args[0], re.DOTALL)
+                r"Warning:\s*(.*?)\s*warnings.warn\(", record.args[0], re.DOTALL
+            )
             if match is not None:
                 record.args = (match.group(1),)
         return super().format(record)
@@ -38,7 +39,7 @@ class ConfigError(RuntimeError):
     pass
 
 
-class Config():
+class Config:
     def __init__(self, filename):
 
         # Attributes for external use.
@@ -78,8 +79,15 @@ class Config():
 
     def _getcfg_toplevel(self):
         toplevel_keys = [
-                "dir", "ref_pop", "maf_threshold", "pop", "sim", "vcf",
-                "train", "apply"]
+            "dir",
+            "ref_pop",
+            "maf_threshold",
+            "pop",
+            "sim",
+            "vcf",
+            "train",
+            "apply",
+        ]
         self._verify_keys_exist(self.config, toplevel_keys)
         self.dir = pathlib.Path(self.config["dir"])
         self.ref_pop = self.config["ref_pop"]
@@ -97,8 +105,9 @@ class Config():
                         pop[k].append(line.strip())
         if self.ref_pop not in pop:
             raise ConfigError(
-                    f"{self.filename}: ref_pop {self.ref_pop} not among those "
-                    f"to be used for the genotype matrix: {pop}.")
+                f"{self.filename}: ref_pop {self.ref_pop} not among those "
+                f"to be used for the genotype matrix: {pop}."
+            )
         self.pop = pop
         self.vcf_samples = list(itertools.chain(*self.pop.values()))
         self.num_haplotypes = 2 * len(self.vcf_samples)
@@ -126,13 +135,15 @@ class Config():
                     self.pop2tsidx = pop2tsidx
                 elif pop2tsidx.items() != self.pop2tsidx.items():
                     raise ConfigError(
-                            f"{self.filename} populations defined for {modelspec} "
-                            "do not match earlier modelspecs.")
+                        f"{self.filename} populations defined for {modelspec} "
+                        "do not match earlier modelspecs."
+                    )
                 for pop in self.pop.keys():
                     if pop not in pop2tsidx:
                         raise ConfigError(
-                                f"{self.filename}: {pop} not found in {modelspec}. "
-                                f"Options are: {list(pop2tsidx.keys())}")
+                            f"{self.filename}: {pop} not found in {modelspec}. "
+                            f"Options are: {list(pop2tsidx.keys())}"
+                        )
         self.tranche = tranche
 
     def _getcfg_vcf(self):
@@ -164,17 +175,24 @@ class Config():
         self.nn_model = train.get("model")
 
         nn_model_keys = {
-                "cnn": [
-                        "n_conv", "n_conv_filt", "filt_size_x", "filt_size_y",
-                        "n_dense", "dense_size"],
-                }
+            "cnn": [
+                "n_conv",
+                "n_conv_filt",
+                "filt_size_x",
+                "filt_size_y",
+                "n_dense",
+                "dense_size",
+            ],
+        }
         params = train.get(self.nn_model)
         if params is None or self.nn_model not in nn_model_keys:
             raise ConfigError(
-                    f"{self.filename}: train.model must be set to one of: "
-                    f"{list(nn_model_keys.keys())}")
+                f"{self.filename}: train.model must be set to one of: "
+                f"{list(nn_model_keys.keys())}"
+            )
         self._verify_keys_exist(
-                params, nn_model_keys[self.nn_model], "train.{self.nn_model}")
+            params, nn_model_keys[self.nn_model], "train.{self.nn_model}"
+        )
         self.nn_model_params = params
 
     def _getcfg_eval(self):
@@ -208,7 +226,7 @@ class Config():
         """
         # TODO: Use self.phasing here, and fix the tree sequence genotype
         #       matrices to match.
-        return {p: 2*len(v) for p, v in self.pop.items()}
+        return {p: 2 * len(v) for p, v in self.pop.items()}
 
     def pop_indices(self):
         """

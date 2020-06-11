@@ -27,7 +27,8 @@ def digraph(model):
     for i, event in enumerate(model.demographic_events):
         if event.time < prev_event_time:
             raise ValueError(
-                    "demographic events must be sorted in time-ascending order")
+                "demographic events must be sorted in time-ascending order"
+            )
         prev_event_time = event.time
 
         if isinstance(event, msprime.MassMigration):
@@ -38,19 +39,19 @@ def digraph(model):
             if t_source is None:
                 t_source = event.time
                 G.nodes[source].update(
-                        time=t_source, label=f"{source}\ntime={t_source:.0f}")
+                    time=t_source, label=f"{source}\ntime={t_source:.0f}"
+                )
             t_dest = G.nodes[dest].get("time")
             if t_dest is None:
                 t_dest = event.time
-                G.nodes[dest].update(
-                        time=t_dest, label=f"{dest}\ntime={t_dest:.0f}")
+                G.nodes[dest].update(time=t_dest, label=f"{dest}\ntime={t_dest:.0f}")
 
             if event.proportion == 1:
                 if t_dest < event.time:
                     new = dest + "/^"
                     G.add_node(
-                            new, time=event.time,
-                            label=f"{new}\ntime={event.time:.0f}")
+                        new, time=event.time, label=f"{new}\ntime={event.time:.0f}"
+                    )
                     G.add_edge(new, dest)
                     parent[dest] = new
                     dest = new
@@ -70,12 +71,17 @@ def digraph(model):
                     parent[dest] = new
                     dest = new
                 G.add_edge(
-                        dest, source, style="dotted", color="red",
-                        label=f"{event.proportion:.3g}")
+                    dest,
+                    source,
+                    style="dotted",
+                    color="red",
+                    label=f"{event.proportion:.3g}",
+                )
 
-    assert nx.is_directed_acyclic_graph(G), \
-        "Cycle detected. Please report this bug, and include the " \
+    assert nx.is_directed_acyclic_graph(G), (
+        "Cycle detected. Please report this bug, and include the "
         "demographic model that triggered this error."
+    )
 
     return G
 

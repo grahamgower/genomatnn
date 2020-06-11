@@ -9,10 +9,7 @@ def save_parameters(ts, name, version, **parameters):
     """
     provenance = {
         "schema_version": "1.0.0",
-        "software": {
-            "name": name,
-            "version": version,
-            },
+        "software": {"name": name, "version": version},
         "parameters": parameters,
         # "environment": tskit.provenance.get_environment()
     }
