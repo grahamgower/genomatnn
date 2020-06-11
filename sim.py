@@ -85,7 +85,7 @@ def recomb_slice(recomb_map, start=None, end=None):
     return msprime.RecombinationMap(new_positions, new_rates)
 
 
-def random_autosomal_chunk(species, genetic_map, length):
+def random_autosomal_chunk(species, genetic_map, length, seed):
     """
     Returns a `length` sized recombination map from the given `species`' `genetic_map`.
 
@@ -102,7 +102,8 @@ def random_autosomal_chunk(species, genetic_map, length):
         w.append(wl if i == 0 else wl + w[i-1])
     if w[-1] == 0:
         raise ValueError(f"No chromosomes long enough for length {length}.")
-    chrom = random.choices(chromosomes, cum_weights=w)[0]
+    rng = random.Random(seed)
+    chrom = rng.choices(chromosomes, cum_weights=w)[0]
 
     gm = species.get_genetic_map(genetic_map)
     recomb_map = gm.get_chromosome_map(chrom.id)
@@ -124,7 +125,7 @@ def random_autosomal_chunk(species, genetic_map, length):
                 f"{chrom.id} was sampled, but its recombination map is "
                 f"shorter than {length}.")
 
-    pos = random.randrange(positions[j], positions[k] - length)
+    pos = rng.randrange(positions[j], positions[k] - length)
     # new_map = recomb_map[pos:pos+length]  # requires msprime >= 1.0
     new_map = recomb_slice(recomb_map, start=pos, end=pos+length)
     origin = f"{chrom.id}:{pos}-{pos+length}"
@@ -136,7 +137,7 @@ def random_autosomal_chunk(species, genetic_map, length):
 
 
 def hominin_composite():
-    id = "HomininComposite_4G19"
+    id = "HomininComposite_4G20"
     description = "Four population out of Africa with Neandertal admixture"
     long_description = """
                 A composite of demographic parameters from multiple sources
@@ -252,13 +253,13 @@ def hominin_composite():
             demographic_events=demographic_events)
 
 
-def homsap_composite_model(length, sample_counts):
+def homsap_composite_model(length, sample_counts, seed):
     if "Nea" in sample_counts and sample_counts["Nea"] != 4:
         raise RuntimeError(
             "Must have one sample each for the Vindija and Altai Neanderthals")
     species = stdpopsim.get_species("HomSap")
     model = hominin_composite()
-    contig = random_autosomal_chunk(species, "HapMapII_GRCh37", length)
+    contig = random_autosomal_chunk(species, "HapMapII_GRCh37", length, seed)
     samples = model.get_samples(
         *[sample_counts.get(p.id, 0) if p.id != "Nea" else 0 for p in model.populations])
     if "Nea" in sample_counts:
@@ -417,10 +418,10 @@ def homsap_composite_Sweep_CEU(
             T_sel*model.generation_time, s)
 
 
-def homsap_papuans_model(length, sample_counts):
+def homsap_papuans_model(length, sample_counts, seed):
     species = stdpopsim.get_species("HomSap")
     model = species.get_demographic_model("PapuansOutOfAfrica_10J19")
-    contig = random_autosomal_chunk(species, "HapMapII_GRCh37", length)
+    contig = random_autosomal_chunk(species, "HapMapII_GRCh37", length, seed)
     samples = model.get_samples(
         *[sample_counts.get(p.id, 0) for p in model.populations])
     return species, model, contig, samples
@@ -809,7 +810,7 @@ _simulations = {
             functools.partial(homsap_papuans_AI_Den_to_CHB, Den="Den2"),
         "Sweep/CHB": homsap_papuans_Sweep_CHB,
         },
-    "HomSap/HomininComposite_4G19": {
+    "HomSap/HomininComposite_4G20": {
         # TODO: remove _sample_counts
         "_sample_counts": {"YRI": 216, "CEU": 198, "Nea": 4},
         "demographic_model": homsap_composite_model,
@@ -853,7 +854,7 @@ def get_demog_model(modelspec, sequence_length=100000):
         raise ValueError(f"{modelspec} not found")
 
     model_func = sim_kwargs.get("demographic_model")
-    _, model, _, _ = model_func(sequence_length, {})
+    _, model, _, _ = model_func(sequence_length, {}, 1234)
     return model
 
 
@@ -871,6 +872,7 @@ def sim(
     model_func = sim_kwargs.get("demographic_model")
     assert model_func is not None
     del sim_kwargs["demographic_model"]
+    assert sample_counts is not None
     if sample_counts is None:
         sample_counts = sim_kwargs.get("sample_counts")
     assert sample_counts is not None
@@ -878,7 +880,8 @@ def sim(
     sim_kwargs["min_allele_frequency"] = min_allele_frequency
 
     # Do simulation.
-    species, model, contig, samples = model_func(sequence_length, sample_counts)
+    species, model, contig, samples = model_func(
+            sequence_length, sample_counts, seed)
     ts, (origin, T_mut, T_sel, s) = sim_func(
             model, contig, samples, seed,
             slim_script=slim_script, **sim_kwargs)
