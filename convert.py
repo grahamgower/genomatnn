@@ -14,20 +14,39 @@ import provenance
 logger = logging.getLogger(__name__)
 
 
-def _sort_similarity(A, c):
+def sort_similarity(A, c):
     """
     Sort the columns of 2d-array A by Euclidean distance to vector c.
     """
-    dist = np.sum((A - c)**2, axis=0)
+    assert len(A.shape) == 2
+    assert len(c.shape) == 2 and c.shape[1] == 1
+    dist = np.sum((A - c) ** 2, axis=0)
     idx = np.argsort(dist, kind="stable")
     return A[:, idx]
 
 
-def _reorder_and_sort(A, counts, from_, to, ref_pop):
+def verify_partition(indexes, counts, total):
+    seen = set()
+    for a, n in zip(indexes, counts):
+        if a + n > total:
+            raise ValueError(f"{a}:{a+n} out of bounds for 0:{total}")
+        itv = set(range(a, a + n))
+        if len(seen & itv) != 0:
+            raise ValueError(f"overlapping interval at {a}:{a+n}")
+        seen.update(itv)
+
+    if len(seen) != total:
+        raise ValueError(f"partition is not an exact covering of 0:{total}")
+
+
+def reorder_and_sort(A, counts, from_, to, ref_pop):
     """
     Reorder populations and sort haplotypes within the populations.
     """
     assert len(from_) == len(to) == len(counts)
+    idlist = list(counts.keys())
+    verify_partition([from_[id] for id in idlist], counts.values(), A.shape[1])
+    verify_partition([to[id] for id in idlist], counts.values(), A.shape[1])
 
     # Average over the columns of the ref population. If the genotype
     # matrix were not resized, these would be the ref pop's allele frequencies.
@@ -41,7 +60,7 @@ def _reorder_and_sort(A, counts, from_, to, ref_pop):
         b = a + n
         d = to[pop]
         e = d + n
-        B[:, d:e] = _sort_similarity(A[:, a:b], ref_vec)
+        B[:, d:e] = sort_similarity(A[:, a:b], ref_vec)
     return B
 
 
@@ -59,7 +78,7 @@ def ts_pop_counts_indices(ts):
     return counts, dict(zip(counts.keys(), indices))
 
 
-def _ts2mat(ts, num_rows, maf_thres, rng, exclude_mut_with_metadata=True):
+def ts2mat(ts, num_rows, maf_thres, rng, exclude_mut_with_metadata=True):
     """
     Extract genotype matrix from ``ts``, and resize to ``num_rows`` rows.
     """
@@ -83,8 +102,9 @@ def _ts2mat(ts, num_rows, maf_thres, rng, exclude_mut_with_metadata=True):
             continue
         # Polarise 0 and 1 in genotype matrix by major allele frequency.
         # If allele counts are the same, randomly choose a major allele.
-        if allele_counts[1] > allele_counts[0] or \
-                (allele_counts[1] == allele_counts[0] and rng.random() > 0.5):
+        if allele_counts[1] > allele_counts[0] or (
+            allele_counts[1] == allele_counts[0] and rng.random() > 0.5
+        ):
             genotypes = genotypes ^ 1
         j = int(num_rows * variant.site.position / sequence_length)
         A[j, :] += genotypes
@@ -92,7 +112,8 @@ def _ts2mat(ts, num_rows, maf_thres, rng, exclude_mut_with_metadata=True):
 
 
 def ts_genotype_matrix(
-        ts_file, pop_indices, ref_pop, num_rows, num_cols, maf_thres, rng):
+    ts_file, pop_indices, ref_pop, num_rows, num_cols, maf_thres, rng
+):
     """
     Return a genotype matrix from ``ts``, shrunk to ``num_rows``,
     with populations ordered according to ``pop_indices`` and haplotypes
@@ -106,21 +127,31 @@ def ts_genotype_matrix(
     """
     assert ref_pop in pop_indices
     ts = tskit.load(ts_file)
-    A = _ts2mat(ts, num_rows, maf_thres, rng)
+    A = ts2mat(ts, num_rows, maf_thres, rng)
     ts_counts, ts_pop_indices = ts_pop_counts_indices(ts)
     if sum(ts_counts.values()) != num_cols:
         raise RuntimeError(
-                f"{ts_file}: found {sum(ts_counts.values())} samples, "
-                f"but expected {num_cols}")
-    B = _reorder_and_sort(A, ts_counts, ts_pop_indices, pop_indices, ref_pop)
+            f"{ts_file}: found {sum(ts_counts.values())} samples, "
+            f"but expected {num_cols}"
+        )
+    B = reorder_and_sort(A, ts_counts, ts_pop_indices, pop_indices, ref_pop)
     params = provenance.load_parameters(ts, "genomatnn")
     metadata = tuple(params[k] for k in ("modelspec", "T_mut", "T_sel", "s"))
     return B, metadata
 
 
 def _prepare_training_data(
-        path, tranche, pop_indices, ref_pop, num_rows, num_cols, rng,
-        parallelism, maf_thres, train_frac=0.9):
+    path,
+    tranche,
+    pop_indices,
+    ref_pop,
+    num_rows,
+    num_cols,
+    rng,
+    parallelism,
+    maf_thres,
+    train_frac=0.9,
+):
     """
     Load and label the data, then split into training and validation sets.
     """
@@ -149,13 +180,20 @@ def _prepare_training_data(
     n_train = round(n * train_frac)
 
     logger.debug(
-            f"Converting {n} tree sequence files to genotype matrices with "
-            f"shape ({num_rows}, {num_cols})...")
+        f"Converting {n} tree sequence files to genotype matrices with "
+        f"shape ({num_rows}, {num_cols})..."
+    )
 
     # XXX: parallelism here breaks fixed-seed rng determinism.
     gt_func = functools.partial(
-            ts_genotype_matrix, pop_indices=pop_indices, ref_pop=ref_pop,
-            num_rows=num_rows, num_cols=num_cols, maf_thres=maf_thres, rng=rng)
+        ts_genotype_matrix,
+        pop_indices=pop_indices,
+        ref_pop=ref_pop,
+        num_rows=num_rows,
+        num_cols=num_cols,
+        maf_thres=maf_thres,
+        rng=rng,
+    )
 
     with concurrent.futures.ProcessPoolExecutor(parallelism) as ex:
         res = list(ex.map(gt_func, files, chunksize=10))
@@ -164,16 +202,25 @@ def _prepare_training_data(
 
     max_modelspec_len = functools.reduce(max, (len(md[0]) for md in metadata))
     metadata_dtype = [
-            ("modelspec", f"U{max_modelspec_len}"),
-            ("T_mut", float), ("T_sel", float), ("s", float)]
+        ("modelspec", f"U{max_modelspec_len}"),
+        ("T_mut", float),
+        ("T_sel", float),
+        ("s", float),
+    ]
     metadata = np.fromiter(metadata, dtype=metadata_dtype)
 
     train_data, val_data = data[:n_train], data[n_train:]
     train_labels, val_labels = labels[:n_train], labels[n_train:]
     train_metadata, val_metadata = metadata[:n_train], metadata[n_train:]
 
-    return (train_data, train_labels, train_metadata,
-            val_data, val_labels, val_metadata)
+    return (
+        train_data,
+        train_labels,
+        train_metadata,
+        val_data,
+        val_labels,
+        val_metadata,
+    )
 
 
 def check_data(data, tranche, num_rows, num_cols):
@@ -182,35 +229,52 @@ def check_data(data, tranche, num_rows, num_cols):
     """
     n_ids = len(tranche)
     assert n_ids >= 2, "Must specify at least two tranches."
-    (train_data, train_labels, train_metadata,
-        val_data, val_labels, val_metadata) = data
+    (
+        train_data,
+        train_labels,
+        train_metadata,
+        val_data,
+        val_labels,
+        val_metadata,
+    ) = data
     for d in (train_data, val_data):
         assert len(d.shape) == 3, "Data has too many dimensions."
-        assert d.shape[1:3] == (num_rows, num_cols), \
-            f"Data has shape {d.shape[1:3]}, but ({num_rows}, {num_cols}) " \
+        assert d.shape[1:3] == (num_rows, num_cols), (
+            f"Data has shape {d.shape[1:3]}, but ({num_rows}, {num_cols}) "
             "was expected."
-    assert train_data.shape[2] == val_data.shape[2], \
-        "Training and validation data have different shapes."
-    assert train_data.shape[0] == train_labels.shape[0], \
-        "The number of training data instances doesn't match the number of labels."
-    assert train_data.shape[0] == train_metadata.shape[0], \
-        "The number of training data instances doesn't match the metadata."
-    assert val_data.shape[0] == val_labels.shape[0], \
-        "The number of validataion data instances doesn't match the number of labels."
-    assert val_data.shape[0] == val_metadata.shape[0], \
-        "The number of validation data instances doesn't match the metadata."
+        )
+    assert (
+        train_data.shape[2] == val_data.shape[2]
+    ), "Training and validation data have different shapes."
+    assert (
+        train_data.shape[0] == train_labels.shape[0]
+    ), "The number of training data instances doesn't match the number of labels."
+    assert (
+        train_data.shape[0] == train_metadata.shape[0]
+    ), "The number of training data instances doesn't match the metadata."
+    assert (
+        val_data.shape[0] == val_labels.shape[0]
+    ), "The number of validataion data instances doesn't match the number of labels."
+    assert (
+        val_data.shape[0] == val_metadata.shape[0]
+    ), "The number of validation data instances doesn't match the metadata."
     for i, l in enumerate((train_labels, val_labels)):
         which = "training" if i == 0 else "validation"
         n_unique_ids = len(np.unique(l))
-        assert n_unique_ids == n_ids, \
-            f"The {which} data has {n_unique_ids} unique label(s), " \
+        assert n_unique_ids == n_ids, (
+            f"The {which} data has {n_unique_ids} unique label(s), "
             f"but {n_ids} tranches were specified"
+        )
 
 
 _cache_keys = (
-        "train/data", "train/labels", "train/metadata",
-        "val/data", "val/labels", "val/metadata",
-        )
+    "train/data",
+    "train/labels",
+    "train/metadata",
+    "val/data",
+    "val/labels",
+    "val/metadata",
+)
 
 
 def load_data_cache(cache):
@@ -219,18 +283,37 @@ def load_data_cache(cache):
     logger.debug(f"Loading data from {cache}.")
     store = zarr.load(str(cache))
     return tuple(store[k] for k in _cache_keys)
+    """
+    data = tuple(store[k] for k in _cache_keys)
+    (train_data, train_labels, train_metadata,
+            val_data, val_labels, val_metadata) = data
+    for md in (train_metadata, val_metadata):
+        for i in range(len(md["modelspec"])):
+            md["modelspec"][i] = md["modelspec"][i].replace(
+                    "HomininComposite_4G19", "HomininComposite_4G20")
+    save_data_cache(cache, data)
+    return data
+    """
 
 
 def save_data_cache(cache, data):
     logger.debug(f"Caching data to {cache}.")
-    data_kwargs = {k: zarr.array(v, chunks=False)
-                   for k, v in zip(_cache_keys, data)}
+    data_kwargs = {k: zarr.array(v, chunks=False) for k, v in zip(_cache_keys, data)}
     zarr.save(str(cache), **data_kwargs)
 
 
 def prepare_training_data(
-        path, tranche, pop_indices, ref_pop, num_rows, num_cols, rng,
-        parallelism, maf_thres, cache):
+    path,
+    tranche,
+    pop_indices,
+    ref_pop,
+    num_rows,
+    num_cols,
+    rng,
+    parallelism,
+    maf_thres,
+    cache,
+):
     """
     Wrapper for _prepare_training_data() that maintains an on-disk zarr cache.
     """
@@ -239,8 +322,16 @@ def prepare_training_data(
     else:
         # Data are not cached, load them up.
         data = _prepare_training_data(
-                path, tranche, pop_indices, ref_pop, num_rows, num_cols, rng,
-                parallelism, maf_thres)
+            path,
+            tranche,
+            pop_indices,
+            ref_pop,
+            num_rows,
+            num_cols,
+            rng,
+            parallelism,
+            maf_thres,
+        )
         save_data_cache(cache, data)
     check_data(data, tranche, num_rows, num_cols)
     return data
