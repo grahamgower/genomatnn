@@ -298,7 +298,14 @@ def load_data_cache(cache):
 
 def save_data_cache(cache, data):
     logger.debug(f"Caching data to {cache}.")
-    data_kwargs = {k: zarr.array(v, chunks=False) for k, v in zip(_cache_keys, data)}
+    data_kwargs = dict()
+    max_chunk_size = 2 ** 30  # 1 Gb
+    for k, v in zip(_cache_keys, data):
+        shape = list(v.shape)
+        size = v.size * v.itemsize
+        if size > max_chunk_size:
+            shape[0] = int(shape[0] * max_chunk_size / size)
+        data_kwargs[k] = zarr.array(v, chunks=shape)
     zarr.save(str(cache), **data_kwargs)
 
 
