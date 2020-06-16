@@ -159,6 +159,9 @@ def vcf_get1(
     min_seg_sites=None,
     max_missing=None,
     maf_thres=None,
+    counts=None,
+    indices=None,
+    ref_pop=None,
 ):
     (vcf_file, chrom, start, end), seed = args
     rng = random.Random(seed)
@@ -176,7 +179,8 @@ def vcf_get1(
         return None
     relative_pos = pos - start
     A = vcf.resize(relative_pos, A, sequence_length, num_rows)
-    return A[np.newaxis, :, :, np.newaxis]
+    A_sorted = convert.reorder_and_sort(A, counts, indices, indices, ref_pop)
+    return A_sorted[np.newaxis, :, :, np.newaxis]
 
 
 def vcf_batch_generator(
@@ -190,6 +194,9 @@ def vcf_batch_generator(
     rng,
     parallelism,
     batch_size,
+    counts,
+    indices,
+    ref_pop,
 ):
     icoordinates = iter(coordinates)
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -205,6 +212,9 @@ def vcf_batch_generator(
             min_seg_sites=min_seg_sites,
             max_missing=max_missing,
             maf_thres=maf_thres,
+            counts=counts,
+            indices=indices,
+            ref_pop=ref_pop,
         )
 
         with concurrent.futures.ProcessPoolExecutor(parallelism) as ex:
@@ -245,6 +255,9 @@ def get_predictions(conf, pred_file):
         rng,
         parallelism,
         conf.apply["batch_size"],
+        conf.sample_counts(),
+        conf.pop_indices(),
+        conf.ref_pop,
     )
 
     logger.debug("Applying tensorflow to vcf data...")
