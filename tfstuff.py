@@ -32,6 +32,7 @@ from tensorflow.keras.layers import (  # noqa
     Lambda,
     Concatenate,
     Flatten,
+    LeakyReLU
 )
 
 logger = logging.getLogger(__name__)
@@ -71,7 +72,6 @@ def ConvLayer(n_filt, filt_size, strides=(1, 1)):
         filt_size,
         strides=strides,
         padding="same",
-        activation="relu",
         use_bias=False,
         kernel_initializer=initializers.RandomNormal(mean=0.0, stddev=stddev),
     )
@@ -102,13 +102,14 @@ def basic_cnn(
     for _ in range(n_conv):
         x = BatchNormalization()(x)
         x = ConvLayer(n_conv_filt, (filt_size_x, filt_size_y), strides=(2, 2))(x)
-        # x = MaxPooling2D(pool_size=(2,2))(x)
+        x = LeakyReLU()(x)
 
     x = Flatten()(x)
 
     for _ in range(n_dense):
         x = BatchNormalization()(x)
-        x = Dense(dense_size, activation="relu")(x)
+        x = Dense(dense_size)(x)
+        x = LeakyReLU()(x)
 
     # Output layers.
     x = BatchNormalization()(x)
@@ -136,18 +137,21 @@ def permutation_invariant_cnn(
     for _ in range(n_conv):
         x = BatchNormalization()(x)
         x = ConvLayer(n_conv_filt, (filt_size, 1))(x)
+        x = LeakyReLU()(x)
 
     x = InvariantLayer()(x)
 
     for _ in range(n_conv):
         x = BatchNormalization()(x)
         x = ConvLayer(n_conv_filt, (filt_size, 1))(x)
+        x = LeakyReLU()(x)
 
     x = Flatten()(x)
 
     for _ in range(n_dense):
         x = BatchNormalization()(x)
-        x = Dense(dense_size, activation="relu")(x)
+        x = Dense(dense_size)(x)
+        x = LeakyReLU()(x)
 
     # Output layers.
     x = BatchNormalization()(x)
@@ -173,10 +177,7 @@ def per_population_permutation_invariant_cnn(
 ):
     """
     A permutation invariant CNN, with the permutation invariant function
-    applied separately to each population, and then applied across populations.
-
-    This follows the approach of Chan et al. 2018.
-    https://doi.org/10.1101/267211
+    applied separately to each population.
     """
     assert output_shape == 1, "Only binary classification is supported for now."
     assert len(pop_starts) == len(pop_ends)
@@ -195,6 +196,7 @@ def per_population_permutation_invariant_cnn(
         for _ in range(n_conv):
             x = BatchNormalization()(x)
             x = ConvLayer(n_conv_filt, (filt_size, 1))(x)
+            x = LeakyReLU()(x)
         # Individual-level permutation invariance.
         x = InvariantLayer(name=f"invariant_ind_{i}")(x)
         poptensors[i] = x
@@ -204,12 +206,14 @@ def per_population_permutation_invariant_cnn(
     for _ in range(n_conv):
         x = BatchNormalization()(x)
         x = ConvLayer(n_conv_filt, (filt_size, 1))(x)
+        x = LeakyReLU()(x)
 
     x = Flatten()(x)
 
     for _ in range(n_dense):
         x = BatchNormalization()(x)
-        x = Dense(dense_size, activation="relu")(x)
+        x = Dense(dense_size)(x)
+        x = LeakyReLU()(x)
 
     # Output layers.
     x = BatchNormalization()(x)
@@ -254,6 +258,7 @@ def train(conf, train_data, train_labels, val_data, val_labels):
         verbose=1,
     )
     save_file = conf.dir / f"{conf.nn_model}_{conf.seed}.hdf5"
+    logger.info(f"Saving model to {save_file}")
     model.save(str(save_file))
     return history
 
