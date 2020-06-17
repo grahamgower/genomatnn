@@ -10,6 +10,7 @@ import toml
 
 import sim
 import vcf
+import calibrate
 
 
 class _CLIFormatter(logging.Formatter):
@@ -58,6 +59,7 @@ class Config:
         self.chr = None
         self.phasing = None
         self.pop2tsidx = None
+        self.calibration = None
 
         # Read in toml file and fill in the attributes.
         self.config = toml.load(self.filename)
@@ -68,6 +70,7 @@ class Config:
         self._getcfg_train()
         self._getcfg_eval()
         self._getcfg_apply()
+        self._getcfg_calibration()
 
         # TODO: Add introspection to check required attributes are set.
         #       Check types? Use attrs somehow?
@@ -204,6 +207,20 @@ class Config:
         self.apply = self.config.get("apply")
         apply_keys = ["step", "batch_size", "max_missing_genotypes", "min_seg_sites"]
         self._verify_keys_exist(self.apply, apply_keys, "apply.")
+
+    def _getcfg_calibration(self):
+        calib_str = self.config.get(
+            "calibration", calibrate.calibration_classes[0].__name__
+        )
+        for cc in calibrate.calibration_classes:
+            if cc.__name__ == calib_str:
+                self.calibration = cc
+                break
+        else:
+            if cc != "None":
+                raise ConfigError(
+                    f"{self.filename}: invalid calibration method {calib_str}"
+                )
 
     def __getitem__(self, key):
         key_fields = key.split(".")

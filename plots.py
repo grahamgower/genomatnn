@@ -399,7 +399,7 @@ def confusion1(ax, cm, xticklabels, yticklabels, cbar=True, annotate=True):
                 ax.text(
                     i,
                     j,
-                    f"{cm[i, j]:.2f}",
+                    f"{cm[i, j]:.3f}",
                     ha="center",
                     va="center",
                     color="white" if cm[i, j] > thresh else "black",
@@ -564,11 +564,11 @@ def hap_matrix1(
         origin="lower",
         rasterized=rasterized,
         # left, right, bottom, top
-        extent=(0, A.shape[1], 0, A.shape[0] / aspect),
+        extent=(0, A.shape[1], 0, A.shape[0] * aspect),
         cmap=cmap,
-        norm=matplotlib.colors.PowerNorm(0.5, vmax=10),
+        norm=matplotlib.colors.PowerNorm(0.5, vmax=5),
     )
-    shrink = 1
+    shrink = 0.8
     cb = ax.figure.colorbar(
         im,
         ax=ax,
@@ -647,9 +647,9 @@ def hap_matrix(
                 if len(want_more) == 0:
                     break
 
-    # aspect = conf.get("eval.plot.aspect", aspect)
     scale = conf.get("eval.plot.scale", scale)
     scale = conf.get("eval.genotype_matrices.plot.scale", scale)
+    aspect = conf.get("eval.genotype_matrices.plot.aspect", aspect)
 
     _, condition_positive = list(conf.tranche.keys())
     pdf = PdfPages(pdf_file)

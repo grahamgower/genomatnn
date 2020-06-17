@@ -89,7 +89,9 @@ def do_train(conf):
 
     import tfstuff
 
+    conf.nn_hdf5_file = str(conf.dir / f"{conf.nn_model}_{conf.seed}.hdf5")
     tfstuff.train(conf, train_data, train_labels, val_data, val_labels)
+    do_eval(conf)
 
 
 def do_eval(conf):
@@ -118,6 +120,7 @@ def do_eval(conf):
     val_pred = val_pred[:, 0]
 
     if conf.calibration is not None:
+        logger.info(f"Fitting {conf.calibration.__name__} calibration")
         cal = conf.calibration()
         val_pred_cal = cal.fit(val_pred, val_labels).predict(val_pred)
     else:
@@ -279,6 +282,7 @@ def get_predictions(conf, pred_file):
         if val_pred.shape[1] != 1:
             raise NotImplementedError("Only binary predictions are supported")
         val_pred = val_pred[:, 0]
+        logger.info(f"Fitting {conf.calibration.__name__} calibration")
         cal = conf.calibration().fit(val_pred, val_labels)
 
     label = list(conf.tranche.keys())[1]
@@ -370,30 +374,6 @@ def parse_args():
         "ready for training, and then exit.",
     )
 
-    for p in (eval_parser, apply_parser):
-
-        def cc_type(cc_str, parser=p):
-            for cc in calibrate.calibration_classes:
-                if cc.__name__ == cc_str:
-                    break
-            else:
-                if cc == "None":
-                    cc = None
-                else:
-                    raise parser.error(f"Invalid calibration method {cc_str}")
-
-        choices = [cc.__name__ for cc in calibrate.calibration_classes]
-        choices.append("None")
-        p.add_argument(
-            "-C",
-            "--calibration",
-            choices=choices,
-            default=choices[0],
-            type=cc_type,
-            help="Calibrate model prediction probabilities using the "
-            "specifed method [default=%(default)s].",
-        )
-
     eval_parser.add_argument(
         "nn_hdf5_file",
         metavar="nn.hdf5",
@@ -441,10 +421,8 @@ def parse_args():
     elif args.subcommand == "train":
         args.conf.convert_only = args.convert_only
     elif args.subcommand == "eval":
-        args.conf.calibration = args.calibration
         args.conf.nn_hdf5_file = args.nn_hdf5_file
     elif args.subcommand == "apply":
-        args.conf.calibration = args.calibration
         args.conf.plot_only = args.plot_only
         args.conf.nn_hdf5_file = args.nn_hdf5_file
     args.conf.parallelism = args.parallelism

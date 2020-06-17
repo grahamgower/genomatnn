@@ -75,6 +75,8 @@ class Isotonic(object):
         self.ir = IsotonicRegression(out_of_bounds="clip")
 
     def fit(self, x, y):
+        x = x.astype(np.float32)
+        y = y.astype(np.float32)
         self.ir.fit(x, y)
         return self
 

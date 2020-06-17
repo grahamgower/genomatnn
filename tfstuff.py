@@ -32,7 +32,7 @@ from tensorflow.keras.layers import (  # noqa
     Lambda,
     Concatenate,
     Flatten,
-    LeakyReLU
+    LeakyReLU,
 )
 
 logger = logging.getLogger(__name__)
@@ -257,9 +257,8 @@ def train(conf, train_data, train_labels, val_data, val_labels):
         validation_data=(val_data, val_labels),
         verbose=1,
     )
-    save_file = conf.dir / f"{conf.nn_model}_{conf.seed}.hdf5"
-    logger.info(f"Saving model to {save_file}")
-    model.save(str(save_file))
+    logger.info(f"Saving model to {conf.nn_hdf5_file}")
+    model.save(conf.nn_hdf5_file)
     return history
 
 
