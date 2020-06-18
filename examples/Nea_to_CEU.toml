@@ -21,16 +21,16 @@ min_allele_frequency = 0.01
 # a list of simulation modelspecs.
 # Only two tranches are supported.
 "not AI" = [
-	"HomSap/HomininComposite_4G19/Neutral/slim",
-	"HomSap/HomininComposite_4G19/Sweep/CEU",
+	"HomSap/HomininComposite_4G20/Neutral/slim",
+	"HomSap/HomininComposite_4G20/Sweep/CEU",
 
 	# Skip this for now, as it's too compuatationally intensive
 	# to do many replicates for training. :-(
-	#"HomSap/HomininComposite_4G19/DFE",
+	#"HomSap/HomininComposite_4G20/DFE",
 ]
 
 AI = [
-	"HomSap/HomininComposite_4G19/AI/Nea_to_CEU",
+	"HomSap/HomininComposite_4G20/AI/Nea_to_CEU",
 ]
 
 [vcf]
@@ -77,7 +77,21 @@ dense_size = 0
 
 [eval]
 # Additional modelspecs against which the trained model will be evaluated.
-"DFE" = "HomSap/HomininComposite_4G19/DFE"
+"DFE" = "HomSap/HomininComposite_4G20/DFE"
+
+[eval.plot]
+aspect = 0.5625  # 9/16
+scale = 0.75
+
+[eval.roc.plot]
+aspect = 0.3125  # 5/16
+
+[eval.reliability.plot]
+#aspect = 0.5625
+scale = 1
+
+[eval.genotype_matrices.plot]
+scale = 0.55
 
 [apply]
 batch_size = 256
