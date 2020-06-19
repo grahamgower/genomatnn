@@ -127,7 +127,7 @@ def do_eval(conf):
         val_pred_cal = val_pred
 
     hap_pdf = str(plot_dir / "genotype_matrices.pdf")
-    plots.hap_matrix(conf, val_data, val_pred, val_metadata, hap_pdf)
+    plots.ts_hap_matrix(conf, val_data, val_pred, val_metadata, hap_pdf)
 
     roc_pdf = str(plot_dir / "roc.pdf")
     plots.roc(conf, val_labels, val_pred_cal, val_metadata, roc_pdf)
@@ -307,6 +307,52 @@ def do_apply(conf):
     plots.predictions(conf, pred_file, pdf_file)
 
 
+def parse_regions(filename):
+    regions = []
+    with open(filename) as f:
+        for line in f:
+            line = line.rstrip()
+            fields = line.split()
+            if line[0] == "#" or fields[0] == "chrom":
+                # ignore header
+                continue
+            chrom = fields[0]
+            start = int(fields[1])
+            end = int(fields[2])
+            regions.append((chrom, start, end))
+    return regions
+
+
+def do_vcfplot(conf):
+    regions = list(conf.regions)
+    if conf.regions_file is not None:
+        regions.extend(parse_regions(conf.regions_file))
+    if len(regions) == 0:
+        raise ValueError("No genomic regions found")
+    chr_file = {str(chrom): vcf for vcf, chrom in zip(conf.file, conf.chr)}
+    coordinates = [(chr_file[r[0]], *r) for r in regions]
+
+    rng = random.Random(conf.seed)
+    logger.debug("Setting up data generator...")
+    parallelism = conf.parallelism if conf.parallelism > 0 else os.cpu_count()
+    vcf_batch_gen = vcf_batch_generator(
+        coordinates,
+        conf.vcf_samples,
+        conf.apply["min_seg_sites"],
+        conf.apply["max_missing_genotypes"],
+        conf.maf_threshold,
+        conf.sequence_length,
+        conf.num_rows,
+        rng,
+        parallelism,
+        16,  # batch size
+        conf.sample_counts(),
+        conf.pop_indices(),
+        conf.ref_pop,
+    )
+    plots.vcf_hap_matrix(conf, vcf_batch_gen, conf.pdf_file)
+
+
 def parse_args():
     parser = argparse.ArgumentParser(
         description="Simulate, train, and apply a CNN to genotype matrices."
@@ -322,9 +368,15 @@ def parse_args():
     eval_parser.set_defaults(func=do_eval)
     apply_parser = subparsers.add_parser("apply", help="Apply trained CNN.")
     apply_parser.set_defaults(func=do_apply)
+    vcfplot_parser = subparsers.add_parser(
+        "vcfplot", help="Plot haplotype/genotype matrices from a VCF/BCF."
+    )
+    vcfplot_parser.set_defaults(func=do_vcfplot)
 
     # Arguments common to all subcommands.
-    for i, p in enumerate((sim_parser, train_parser, eval_parser, apply_parser)):
+    for i, p in enumerate(
+        (sim_parser, train_parser, eval_parser, apply_parser, vcfplot_parser)
+    ):
 
         p.add_argument(
             "-j",
@@ -378,7 +430,7 @@ def parse_args():
         "nn_hdf5_file",
         metavar="nn.hdf5",
         type=str,
-        help="The trained nerual network model to evaulate.",
+        help="The trained neural network model to evaulate.",
     )
 
     apply_parser.add_argument(
@@ -392,7 +444,39 @@ def parse_args():
         "nn_hdf5_file",
         metavar="nn.hdf5",
         type=str,
-        help="The trained nerual network model to apply.",
+        help="The trained neural network model to apply.",
+    )
+
+    def region_type(x, parser=vcfplot_parser):
+        err = (
+            "Region must have the format chrom:a-b "
+            "where a and b are genomic coordinates"
+        )
+        fields = x.split(":")
+        if len(fields) != 2:
+            parser.error(err)
+        chrom, rest = fields
+        fields = rest.split("-")
+        if len(fields) != 2:
+            parser.error(err)
+        try:
+            from_ = int(fields[0])
+            to = int(fields[1])
+        except TypeError:
+            parser.error(err)
+        return chrom, from_, to
+
+    vcfplot_parser.add_argument(
+        "-r", "--regions-file", type=str, help="bcftools-like regions to be plotted.",
+    )
+    vcfplot_parser.add_argument(
+        "pdf_file", metavar="plot.pdf", type=str, help="Filename of the output file.",
+    )
+    vcfplot_parser.add_argument(
+        "regions",
+        nargs="*",
+        type=region_type,
+        help="bcftools-like region(s) to plot, of the form chrom:a-b",
     )
 
     args = parser.parse_args()
@@ -425,6 +509,12 @@ def parse_args():
     elif args.subcommand == "apply":
         args.conf.plot_only = args.plot_only
         args.conf.nn_hdf5_file = args.nn_hdf5_file
+    elif args.subcommand == "vcfplot":
+        if len(args.regions) == 0 and args.regions_file is None:
+            vcfplot_parser.error("Must specify a region to plot.")
+        args.conf.regions = args.regions
+        args.conf.regions_file = args.regions_file
+        args.conf.pdf_file = args.pdf_file
     args.conf.parallelism = args.parallelism
     args.conf.seed = args.seed
     args.conf.verbose = args.verbose

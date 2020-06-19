@@ -558,32 +558,34 @@ def reliability(conf, labels, preds, pdf_file, aspect=10 / 16, scale=1.5, bins=1
 def hap_matrix1(
     A, ax, title, sample_counts, pop_indices, sequence_length, aspect, cmap, rasterized
 ):
+    # vmax heuristic to make the patterns clear
+    vmax = int(round(np.log2(sequence_length / 20 / A.shape[0])))
     im = ax.imshow(
         A,
         interpolation="none",
         origin="lower",
         rasterized=rasterized,
         # left, right, bottom, top
-        extent=(0, A.shape[1], 0, A.shape[0] * aspect),
+        extent=(0, A.shape[1], 0, A.shape[0]),
+        aspect="auto",
         cmap=cmap,
-        norm=matplotlib.colors.PowerNorm(0.5, vmax=5),
+        norm=matplotlib.colors.PowerNorm(0.5, vmax=vmax),
     )
-    shrink = 0.8
+
     cb = ax.figure.colorbar(
         im,
         ax=ax,
         extend="max",
-        shrink=shrink,
-        pad=shrink * 0.05,
-        # pad=0.01,
-        # fraction=0.025,
-        fraction=shrink * 0.10,
+        pad=0.05,
+        fraction=0.04,
         label="Density of minor alleles",
     )
-    cb.set_ticks([])
+    cb.ax.yaxis.set_ticks_position("left")
+    cticks = list(range(vmax + 1))
+    cb.set_ticks(cticks)
 
     ax.set_title(title)
-    ax.set_ylabel("Genomic position")  # , labelpad=-10)
+    ax.set_ylabel("Genomic position")
     ax.set_yticks([0, ax.get_ylim()[1]])
     ax.set_yticklabels(["$0\,$kb", f"${sequence_length//1000}\,$kb"])  # noqa: W605
 
@@ -594,13 +596,18 @@ def hap_matrix1(
     # Add population-labels colour bar on a new axis.
     #
     divider = axes_grid1.make_axes_locatable(ax)
-    ax_pops = divider.append_axes("bottom", 0.2, pad=0, sharex=ax)
+    ax_pops = divider.append_axes("bottom", 0.2, pad=0.05, sharex=ax)
     ax_pops.set_ylim([0, 1])
+
+    for sp in ("top", "right", "bottom", "left"):
+        ax.spines[sp].set_visible(False)
+        ax_pops.spines[sp].set_visible(False)
 
     pop_ticks = []
     boxes = []
     colours = plt.get_cmap("tab10").colors
     for index, count in zip(pop_indices.values(), sample_counts.values()):
+        # (x, y), width, height
         r = Rectangle((index, 0), count, 1)
         boxes.append(r)
         pop_ticks.append(index + count / 2)
@@ -614,21 +621,51 @@ def hap_matrix1(
     ax_pops.set_xticklabels(list(pop_indices.keys()))
     ax_pops.set_xlabel("Haplotypes")
 
-    # ax.figure.subplots_adjust(top=0.8)
     ax.figure.tight_layout()
 
 
 def hap_matrix(
     conf,
-    data,
-    pred,
-    metadata,
+    data_generator,
     pdf_file,
-    n_examples=10,
     aspect=5 / 16,
     scale=1.0,
-    cmap="Greys",
+    cmap="viridis",
     rasterized=False,
+):
+    """
+    Plot haplotype matrices.
+    """
+    scale = conf.get("eval.plot.scale", scale)
+    scale = conf.get("eval.genotype_matrices.plot.scale", scale)
+    aspect = conf.get("eval.genotype_matrices.plot.aspect", aspect)
+
+    pdf = PdfPages(pdf_file)
+
+    for (A, title) in data_generator:
+        sample_counts = conf.sample_counts()
+        pop_indices = conf.pop_indices()
+        fig_w, fig_h = plt.figaspect(aspect)
+        fig, ax = plt.subplots(1, 1, figsize=(scale * fig_w, scale * fig_h))
+        hap_matrix1(
+            A,
+            ax,
+            title,
+            sample_counts,
+            pop_indices,
+            conf.sequence_length,
+            aspect,
+            cmap,
+            rasterized,
+        )
+        pdf.savefig(figure=fig)
+        plt.close(fig)
+
+    pdf.close()
+
+
+def ts_hap_matrix(
+    conf, data, pred, metadata, pdf_file, n_examples=10,
 ):
     """
     Plot haplotype matrices for each modelspec. Plot up to n_examples for each.
@@ -647,43 +684,36 @@ def hap_matrix(
                 if len(want_more) == 0:
                     break
 
-    scale = conf.get("eval.plot.scale", scale)
-    scale = conf.get("eval.genotype_matrices.plot.scale", scale)
-    aspect = conf.get("eval.genotype_matrices.plot.aspect", aspect)
-
     _, condition_positive = list(conf.tranche.keys())
-    pdf = PdfPages(pdf_file)
 
-    for i in itertools.chain(*modelspec_indexes.values()):
-        A = data[i]
-        params = metadata[i]
-        p = pred[i]
-        sample_counts = conf.sample_counts()
-        pop_indices = conf.pop_indices()
+    def data_generator():
+        for i in list(itertools.chain(*modelspec_indexes.values())):
+            meta = metadata[i]
+            p = pred[i]
+            title = (
+                f"{meta['modelspec']}\n"
+                f"$T_{{mut}}$={int(round(meta['T_mut']))}, "
+                f"$T_{{sel}}$={int(round(meta['T_sel']))}, "
+                f"$s$={meta['s']:.4f}, "
+                f"Pr{{{condition_positive}}}={p:.4g}"
+            )
+            yield data[i], title
 
-        fig_w, fig_h = plt.figaspect(aspect)
-        fig, ax = plt.subplots(1, 1, figsize=(scale * fig_w, scale * fig_h))
+    hap_matrix(conf, data_generator, pdf_file)
 
-        title = (
-            f"{params['modelspec']}\n"
-            f"$T_{{mut}}$={int(round(params['T_mut']))}, "
-            f"$T_{{sel}}$={int(round(params['T_sel']))}, "
-            f"$s$={params['s']:.4f}, "
-            f"Pr{{{condition_positive}}}={p:.4g}"
-        )
-        hap_matrix1(
-            A,
-            ax,
-            title,
-            sample_counts,
-            pop_indices,
-            conf.sequence_length,
-            aspect,
-            cmap,
-            rasterized,
-        )
 
-        pdf.savefig(figure=fig)
-        plt.close(fig)
+def vcf_hap_matrix(
+    conf, vcf_batch_gen, pdf_file,
+):
+    """
+    Plot empirical haplotype/genotype matrices.
+    """
 
-    pdf.close()
+    def flatten_batches():
+        for coords_list, vcf_data in vcf_batch_gen:
+            for coords, A in zip(coords_list, vcf_data):
+                _, chrom, start, end = coords
+                title = f"{chrom}:{start}$-${end}"
+                yield A[..., 0], title
+
+    hap_matrix(conf, flatten_batches(), pdf_file)
