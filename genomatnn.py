@@ -108,6 +108,33 @@ def do_eval(conf):
     convert.check_data(data, conf.tranche, conf.num_rows, conf.num_cols)
     _, _, _, val_data, val_labels, val_metadata = data
 
+    extra_sims = conf.get("sim.extra")
+    if extra_sims is not None:
+        extra_cache = conf.dir / f"zarrcache_{conf.num_rows}-rows_extra"
+        rng = random.Random(conf.seed)
+        # Translate ref_pop and pop_indices to tree sequence population indices.
+        ref_pop = conf.pop2tsidx[conf.ref_pop]
+        pop_indices = {
+            conf.pop2tsidx[pop]: idx for pop, idx in conf.pop_indices().items()
+        }
+        parallelism = conf.parallelism if conf.parallelism > 0 else os.cpu_count()
+        data = convert.prepare_extra(
+            conf.dir,
+            extra_sims,
+            pop_indices,
+            ref_pop,
+            conf.num_rows,
+            conf.num_cols,
+            rng,
+            parallelism,
+            conf.maf_threshold,
+            extra_cache,
+        )
+        extra_data, _, extra_metadata = data
+        n = len(extra_data)
+        extra_labels = np.zeros(n)
+        logger.debug(f"Loaded {n} extra validation simulations.")
+
     plot_dir = pathlib.Path(conf.nn_hdf5_file[: -len(".hdf5")])
     plot_dir.mkdir(parents=True, exist_ok=True)
 
@@ -122,23 +149,46 @@ def do_eval(conf):
 
     with strategy.scope():
         val_pred = model.predict(val_data)
+        if extra_sims is not None:
+            extra_pred = model.predict(extra_data)
 
     if val_pred.shape[1] != 1:
         raise NotImplementedError("Only binary predictions are supported")
     val_pred = val_pred[:, 0]
+    if extra_sims is not None:
+        extra_pred = extra_pred[:, 0]
 
     if conf.calibration is not None:
         logger.info(f"Fitting {conf.calibration.__name__} calibration")
         cal = conf.calibration()
-        val_pred_cal = cal.fit(val_pred, val_labels).predict(val_pred)
+        fit = cal.fit(val_pred, val_labels)
+        val_pred_cal = fit.predict(val_pred)
+        if extra_sims is not None:
+            extra_pred_cal = fit.predict(extra_pred)
     else:
         val_pred_cal = val_pred
+        if extra_sims is not None:
+            extra_pred_cal = extra_pred
+
+    if extra_sims is None:
+        extra_pred_cal = None
+        extra_labels = None
+        extra_metadata = None
 
     hap_pdf = str(plot_dir / "genotype_matrices.pdf")
     plots.ts_hap_matrix(conf, val_data, val_pred, val_metadata, hap_pdf)
 
     roc_pdf = str(plot_dir / "roc.pdf")
-    plots.roc(conf, val_labels, val_pred_cal, val_metadata, roc_pdf)
+    plots.roc(
+        conf,
+        val_labels,
+        val_pred_cal,
+        val_metadata,
+        extra_labels,
+        extra_pred_cal,
+        extra_metadata,
+        roc_pdf,
+    )
 
     accuracy_pdf = str(plot_dir / "accuracy.pdf")
     plots.accuracy(conf, val_labels, val_pred_cal, val_metadata, accuracy_pdf)
@@ -436,7 +486,7 @@ def parse_args():
         nargs="?",
         default=None,
         help="Model specification to simulated. "
-             "If not provided, modelspecs from the config file will be simulated",
+        "If not provided, modelspecs from the config file will be simulated",
     )
 
     train_parser.add_argument(

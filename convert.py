@@ -136,11 +136,15 @@ def ts_genotype_matrix(
         )
     B = reorder_and_sort(A, ts_counts, ts_pop_indices, pop_indices, ref_pop)
     params = provenance.load_parameters(ts, "genomatnn")
+    # TODO remove the s/4G19/4G20/ renaming
+    params["modelspec"] = params["modelspec"].replace(
+        "HomininComposite_4G19", "HomininComposite_4G20"
+    )
     metadata = tuple(params[k] for k in ("modelspec", "T_mut", "T_sel", "s"))
     return B, metadata
 
 
-def _prepare_training_data(
+def _prepare_data(
     path,
     tranche,
     pop_indices,
@@ -150,15 +154,12 @@ def _prepare_training_data(
     rng,
     parallelism,
     maf_thres,
-    train_frac=0.9,
 ):
     """
-    Load and label the data, then split into training and validation sets.
+    Load and label the data.
     """
     files = []
     labels = []  # integer labels
-    if len(tranche) < 2:
-        raise RuntimeError("Must specify at least two tranches.")
     for i, (tr_id, tr_list) in enumerate(tranche.items()):
         n_tranche = 0
         for tr in tr_list:
@@ -177,7 +178,6 @@ def _prepare_training_data(
     rng.shuffle(indexes)
     files = [files[i] for i in indexes]
     labels = np.fromiter((labels[i] for i in indexes), dtype=np.int8)
-    n_train = round(n * train_frac)
 
     logger.debug(
         f"Converting {n} tree sequence files to genotype matrices with "
@@ -208,7 +208,40 @@ def _prepare_training_data(
         ("s", float),
     ]
     metadata = np.fromiter(metadata, dtype=metadata_dtype)
+    return data, labels, metadata
 
+
+def _prepare_training_data(
+    path,
+    tranche,
+    pop_indices,
+    ref_pop,
+    num_rows,
+    num_cols,
+    rng,
+    parallelism,
+    maf_thres,
+    train_frac=0.9,
+):
+    """
+    Load and label the data, then split into training and validation sets.
+    """
+    if len(tranche) < 2:
+        raise RuntimeError("Must specify at least two tranches.")
+    data, labels, metadata = _prepare_data(
+        path,
+        tranche,
+        pop_indices,
+        ref_pop,
+        num_rows,
+        num_cols,
+        rng,
+        parallelism,
+        maf_thres,
+    )
+
+    n = len(data)
+    n_train = round(n * train_frac)
     train_data, val_data = data[:n_train], data[n_train:]
     train_labels, val_labels = labels[:n_train], labels[n_train:]
     train_metadata, val_metadata = metadata[:n_train], metadata[n_train:]
@@ -277,30 +310,19 @@ _cache_keys = (
 )
 
 
-def load_data_cache(cache):
+def load_data_cache(cache, cache_keys=_cache_keys):
     if not cache.exists():
         raise RuntimeError(f"{cache} doesn't exist")
     logger.debug(f"Loading data from {cache}.")
     store = zarr.load(str(cache))
-    return tuple(store[k] for k in _cache_keys)
-    """
-    data = tuple(store[k] for k in _cache_keys)
-    (train_data, train_labels, train_metadata,
-            val_data, val_labels, val_metadata) = data
-    for md in (train_metadata, val_metadata):
-        for i in range(len(md["modelspec"])):
-            md["modelspec"][i] = md["modelspec"][i].replace(
-                    "HomininComposite_4G19", "HomininComposite_4G20")
-    save_data_cache(cache, data)
-    return data
-    """
+    return tuple(store[k] for k in cache_keys)
 
 
-def save_data_cache(cache, data):
+def save_data_cache(cache, data, cache_keys=_cache_keys):
     logger.debug(f"Caching data to {cache}.")
     data_kwargs = dict()
     max_chunk_size = 2 ** 30  # 1 Gb
-    for k, v in zip(_cache_keys, data):
+    for k, v in zip(cache_keys, data):
         shape = list(v.shape)
         size = v.size * v.itemsize
         if size > max_chunk_size:
@@ -341,4 +363,42 @@ def prepare_training_data(
         )
         save_data_cache(cache, data)
     check_data(data, tranche, num_rows, num_cols)
+    return data
+
+
+def prepare_extra(
+    path,
+    tranche,
+    pop_indices,
+    ref_pop,
+    num_rows,
+    num_cols,
+    rng,
+    parallelism,
+    maf_thres,
+    cache,
+):
+    cache_keys = (
+        "extra/data",
+        "extra/labels",
+        "extra/metadata",
+    )
+    if cache.exists():
+        data = load_data_cache(cache, cache_keys=cache_keys)
+    else:
+        # Data are not cached, load them up.
+        data = _prepare_data(
+            path,
+            tranche,
+            pop_indices,
+            ref_pop,
+            num_rows,
+            num_cols,
+            rng,
+            parallelism,
+            maf_thres,
+        )
+        save_data_cache(cache, data, cache_keys=cache_keys)
+    # TODO fix check_data to work with n_tranches != 2
+    # check_data(data, tranche, num_rows, num_cols)
     return data

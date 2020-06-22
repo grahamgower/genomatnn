@@ -1,6 +1,7 @@
 import itertools
 import operator
 import collections
+import copy
 
 import numpy as np
 import matplotlib
@@ -159,18 +160,40 @@ def esf(a, q, norm=True):
     return sf
 
 
-def roc(conf, labels, pred, metadata, pdf_file, aspect=10 / 16, scale=1.5, inset=False):
-
+def roc(
+    conf,
+    labels,
+    pred,
+    metadata,
+    extra_labels,
+    extra_pred,
+    extra_metadata,
+    pdf_file,
+    aspect=10 / 16,
+    scale=1.5,
+    inset=False,
+):
     (
         (condition_negative, false_modelspecs),
         (condition_positive, true_modelspecs),
-    ) = list(conf.tranche.items())
+    ) = copy.deepcopy(list(conf.tranche.items()))
 
     tp = pred[np.where(labels == 1)]
     fp_list = []
     for fp_modelspec in false_modelspecs:
         fp = pred[np.where(metadata["modelspec"] == fp_modelspec)]
         fp_list.append(fp)
+
+    extra_sims = conf.get("sim.extra")
+    if extra_sims is not None:
+        assert extra_labels is not None
+        assert extra_pred is not None
+        assert extra_metadata is not None
+        for mspec_label, extra_modelspecs in extra_sims.items():
+            for modelspec in extra_modelspecs:
+                fp = extra_pred[np.where(extra_metadata["modelspec"] == modelspec)]
+                fp_list.append(fp)
+                false_modelspecs.append(modelspec)
 
     aspect = conf.get("eval.plot.aspect", aspect)
     scale = conf.get("eval.plot.scale", scale)
@@ -231,6 +254,16 @@ def roc(conf, labels, pred, metadata, pdf_file, aspect=10 / 16, scale=1.5, inset
         axs[1].plot(recall, precision, color=c, linestyle=ls, label=label)
         # axs[1].scatter(
         #        recall, precision, marker=m, facecolor=c, edgecolor=c, label=label)
+        for i, ch in zip((50, 90), ("o", "x")):
+            if ch == "x":
+                ec = "none"
+                fc = c
+            else:
+                ec = c
+                fc = "none"
+            axs[1].scatter(
+                recall[i], precision[i], marker=ch, facecolor=fc, edgecolor=ec
+            )
 
         if len(axs) >= 3:
             tnr = 1 - fpr  # true negative rate (specificity)
@@ -239,6 +272,14 @@ def roc(conf, labels, pred, metadata, pdf_file, aspect=10 / 16, scale=1.5, inset
 
             axs[2].plot(tnr, npv, color=c, linestyle=ls, label=label)
             # axs[2].scatter(fnr, _for, marker=m, facecolor=c, edgecolor=c, label=label)
+            for i, ch in zip((50, 90), ("o", "x")):
+                if ch == "x":
+                    ec = "none"
+                    fc = c
+                else:
+                    ec = c
+                    fc = "none"
+                axs[2].scatter(tnr[i], npv[i], marker=ch, facecolor=fc, edgecolor=ec)
 
     handles, _ = axs[0].get_legend_handles_labels()
     handles.extend(
@@ -276,6 +317,9 @@ def roc(conf, labels, pred, metadata, pdf_file, aspect=10 / 16, scale=1.5, inset
         ax.set_xlim([-0.05, 1.05])
         ax.set_ylim([-0.05, 1.05])
 
+        itv = 0.2
+        ax.set_xticks(np.arange(0, 1 + itv, itv))
+        ax.set_yticks(np.arange(0, 1 + itv, itv))
         itv = 0.1
         ax.set_xticks(np.arange(0, 1, itv), minor=True)
         ax.set_yticks(np.arange(0, 1, itv), minor=True)
@@ -699,7 +743,7 @@ def ts_hap_matrix(
             )
             yield data[i], title
 
-    hap_matrix(conf, data_generator, pdf_file)
+    hap_matrix(conf, data_generator(), pdf_file)
 
 
 def vcf_hap_matrix(
