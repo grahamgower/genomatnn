@@ -43,8 +43,16 @@ def _sim_wrapper(args, conf=None):
 
 
 def do_sim(conf):
+    if conf.list:
+        # Just print available modelspecs and exit
+        for modelspec in sim._models().keys():
+            print(modelspec)
+        return
     parallelism = conf.parallelism if conf.parallelism > 0 else os.cpu_count()
-    modelspecs = list(itertools.chain(*conf.tranche.values()))
+    if conf.modelspec is not None:
+        modelspecs = [conf.modelspec]
+    else:
+        modelspecs = list(itertools.chain(*conf.tranche.values()))
     sim_func = functools.partial(_sim_wrapper, conf=conf)
     rng = random.Random(conf.seed)
 
@@ -416,6 +424,20 @@ def parse_args():
         "simulation is run for each modelspec. "
         "[default=%(default)s]",
     )
+    sim_parser.add_argument(
+        "-l",
+        "--list",
+        action="store_true",
+        default=False,
+        help="List available model specifications.",
+    )
+    sim_parser.add_argument(
+        "modelspec",
+        nargs="?",
+        default=None,
+        help="Model specification to simulated. "
+             "If not provided, modelspecs from the config file will be simulated",
+    )
 
     train_parser.add_argument(
         "-c",
@@ -502,6 +524,8 @@ def parse_args():
     # Transfer args to the config
     if args.subcommand == "sim":
         args.conf.num_reps = args.num_reps
+        args.conf.list = args.list
+        args.conf.modelspec = args.modelspec
     elif args.subcommand == "train":
         args.conf.convert_only = args.convert_only
     elif args.subcommand == "eval":

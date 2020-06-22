@@ -1,9 +1,6 @@
 #!/usr/bin/env python3
-import sys
 import math
-import os.path
 import random
-import argparse
 import collections
 import functools
 import bisect
@@ -13,7 +10,6 @@ import attr
 import msprime
 import stdpopsim
 
-import config
 import provenance
 import contact
 
@@ -24,7 +20,7 @@ __version__ = "0.1"
 logger = logging.getLogger(__name__)
 
 
-@attr.s(frozen=True, kw_only=True)
+@attr.s(kw_only=True)
 class MyContig(stdpopsim.Contig):
     """
     Extend stdpopsim.Contig with an origin attribute that records the chromosome
@@ -296,6 +292,7 @@ def homsap_composite_Nea_to_CEU(
     dfe=False,
     slim_script=False,
     min_allele_frequency=0,
+    selection=True,
     **kwargs,
 ):
     rng = random.Random(seed)
@@ -317,8 +314,13 @@ def homsap_composite_Nea_to_CEU(
 
     t_delta = 1e3 / model.generation_time
     T_mut = rng.uniform(T_Nea_CEU_mig + t_delta, T_Nea_human_split)
-    T_sel = rng.uniform(t_delta, T_Nea_CEU_mig)
-    s = rng.uniform(0.001, 0.1)
+    if selection:
+        T_sel = rng.uniform(t_delta, T_Nea_CEU_mig)
+        s = rng.uniform(0.001, 0.1)
+    else:
+        T_sel = 0
+        s = 0
+        min_allele_frequency = 0
 
     coordinate = round(contig.recombination_map.get_length() / 2)
 
@@ -332,45 +334,52 @@ def homsap_composite_Nea_to_CEU(
             # Save state before the mutation is introduced
             save=True,
         ),
-        # Mutation is positively selected in CEU
-        stdpopsim.ext.ChangeMutationFitness(
-            start_time=T_sel,
-            end_time=0,
-            mutation_type_id=mut_id,
-            population_id=pop["CEU"],
-            selection_coeff=s,
-            dominance_coeff=0.5,
-        ),
-        # Allele frequency conditioning. If the condition is not met, we
-        # restore to the most recent save point.
-        stdpopsim.ext.ConditionOnAlleleFrequency(
-            # FIXME: GenerationAfter(T_mut) < T_Nea_CEU_mig
-            start_time=stdpopsim.ext.GenerationAfter(T_mut),
-            end_time=T_Nea_CEU_mig,
-            mutation_type_id=mut_id,
-            population_id=pop["Nea"],
-            op=">",
-            allele_frequency=0,
-        ),
-        stdpopsim.ext.ConditionOnAlleleFrequency(
-            start_time=stdpopsim.ext.GenerationAfter(T_Nea_CEU_mig),
-            end_time=0,
-            mutation_type_id=mut_id,
-            population_id=pop["CEU"],
-            op=">",
-            allele_frequency=0,
-            # Update save point at start_time.
-            save=True,
-        ),
-        stdpopsim.ext.ConditionOnAlleleFrequency(
-            start_time=0,
-            end_time=0,
-            mutation_type_id=mut_id,
-            population_id=pop["CEU"],
-            op=">",
-            allele_frequency=min_allele_frequency,
-        ),
     ]
+    if selection:
+        extended_events.append(
+            # Mutation is positively selected in CEU
+            stdpopsim.ext.ChangeMutationFitness(
+                start_time=T_sel,
+                end_time=0,
+                mutation_type_id=mut_id,
+                population_id=pop["CEU"],
+                selection_coeff=s,
+                dominance_coeff=0.5,
+            )
+        )
+    extended_events.extend(
+        [
+            # Allele frequency conditioning. If the condition is not met, we
+            # restore to the most recent save point.
+            stdpopsim.ext.ConditionOnAlleleFrequency(
+                # FIXME: GenerationAfter(T_mut) < T_Nea_CEU_mig
+                start_time=stdpopsim.ext.GenerationAfter(T_mut),
+                end_time=T_Nea_CEU_mig,
+                mutation_type_id=mut_id,
+                population_id=pop["Nea"],
+                op=">",
+                allele_frequency=0,
+            ),
+            stdpopsim.ext.ConditionOnAlleleFrequency(
+                start_time=stdpopsim.ext.GenerationAfter(T_Nea_CEU_mig),
+                end_time=0,
+                mutation_type_id=mut_id,
+                population_id=pop["CEU"],
+                op=">",
+                allele_frequency=0,
+                # Update save point at start_time.
+                save=True,
+            ),
+            stdpopsim.ext.ConditionOnAlleleFrequency(
+                start_time=0,
+                end_time=0,
+                mutation_type_id=mut_id,
+                population_id=pop["CEU"],
+                op=">",
+                allele_frequency=min_allele_frequency,
+            ),
+        ]
+    )
 
     engine = stdpopsim.get_engine("slim")
     ts = engine.simulate(
@@ -985,69 +994,74 @@ def homsap_papuans_Sweep_CHB(
     )
 
 
-# TODO: nested dicts here are unwieldy. Use attr classes instead?
+@attr.s(kw_only=True)
+class ModelSpec:
+    # Base demographic model.
+    model_func = attr.ib()
+    # Various mutation models to stack on top of the demographic model.
+    # TODO: these probably need a description field.
+    scenarios = attr.ib()
+
+
 _simulations = {
-    "HomSap/PapuansOutOfAfrica_10J19": {
-        # Model kwargs come first and must be prefixed with an underscore.
-        # TODO: remove _sample_counts
-        # "_sample_counts": {"YRI": 216, "Papuan": 56, "DenA": 2, "NeaA": 2},
-        "_sample_counts": {"YRI": 216, "CHB": 200, "DenA": 2, "NeaA": 2},
-        # Base demographic model.
-        "demographic_model": homsap_papuans_model,
-        # Various mutation models to stack on top of the demographic model.
-        "Neutral/slim": functools.partial(generic_Neutral, engine="slim"),
-        "Neutral/msprime": functools.partial(generic_Neutral, engine="msprime"),
-        "DFE": homsap_DFE,
-        "AI/Den1_to_Papuan": functools.partial(
-            homsap_papuans_AI_Den_to_Papuan, Den="Den1"
-        ),
-        "AI/Den2_to_Papuan": functools.partial(
-            homsap_papuans_AI_Den_to_Papuan, Den="Den2"
-        ),
-        "Sweep/Papuan": homsap_papuans_Sweep_Papuan,
-        "AI/Den1_to_CHB": functools.partial(homsap_papuans_AI_Den_to_CHB, Den="Den1"),
-        "AI/Den2_to_CHB": functools.partial(homsap_papuans_AI_Den_to_CHB, Den="Den2"),
-        "Sweep/CHB": homsap_papuans_Sweep_CHB,
-    },
-    "HomSap/HomininComposite_4G20": {
-        # TODO: remove _sample_counts
-        "_sample_counts": {"YRI": 216, "CEU": 198, "Nea": 4},
-        "demographic_model": homsap_composite_model,
-        "Neutral/slim": functools.partial(generic_Neutral, engine="slim"),
-        "Neutral/msprime": functools.partial(generic_Neutral, engine="msprime"),
-        "DFE": homsap_DFE,
-        "AI/Nea_to_CEU": homsap_composite_Nea_to_CEU,
-        "Sweep/CEU": homsap_composite_Sweep_CEU,
-    },
+    "HomSap/PapuansOutOfAfrica_10J19": ModelSpec(
+        model_func=homsap_papuans_model,
+        scenarios={
+            # Various mutation models to stack on top of the demographic model.
+            "Neutral/slim": functools.partial(generic_Neutral, engine="slim"),
+            "Neutral/msprime": functools.partial(generic_Neutral, engine="msprime"),
+            "DFE": homsap_DFE,
+            "AI/Den1_to_Papuan": functools.partial(
+                homsap_papuans_AI_Den_to_Papuan, Den="Den1"
+            ),
+            "AI/Den2_to_Papuan": functools.partial(
+                homsap_papuans_AI_Den_to_Papuan, Den="Den2"
+            ),
+            "Sweep/Papuan": homsap_papuans_Sweep_Papuan,
+            "AI/Den1_to_CHB": functools.partial(
+                homsap_papuans_AI_Den_to_CHB, Den="Den1"
+            ),
+            "AI/Den2_to_CHB": functools.partial(
+                homsap_papuans_AI_Den_to_CHB, Den="Den2"
+            ),
+            "Sweep/CHB": homsap_papuans_Sweep_CHB,
+        },
+    ),
+    "HomSap/HomininComposite_4G20": ModelSpec(
+        model_func=homsap_composite_model,
+        scenarios={
+            "Neutral/slim": functools.partial(generic_Neutral, engine="slim"),
+            "Neutral/msprime": functools.partial(generic_Neutral, engine="msprime"),
+            "DFE": homsap_DFE,
+            "AI/Nea_to_CEU": homsap_composite_Nea_to_CEU,
+            "Neutral/Nea_to_CEU": functools.partial(
+                homsap_composite_Nea_to_CEU, selection=False
+            ),
+            "Sweep/CEU": homsap_composite_Sweep_CEU,
+        },
+    ),
 }
 
 
 def _models(mdict=_simulations):
     models = {}
-    kwargs = {}
-    for key, val in mdict.items():
-        if key[0] == "_":
-            key = key[1:]
-            kwargs[key] = val
-        elif key == "demographic_model":
-            kwargs[key] = val
-        elif callable(val):
-            models[key] = (val, kwargs)
-        else:
-            children = ((f"{key}/{m}", (f, kw)) for m, (f, kw) in _models(val).items())
-            models.update(children)
+    for prefix, spec in mdict.items():
+        assert callable(spec.model_func)
+        for scenario, sim_func in spec.scenarios.items():
+            assert callable(sim_func)
+            modelspec = f"{prefix}/{scenario}"
+            models[modelspec] = (spec.model_func, sim_func)
     return models
 
 
 def get_demog_model(modelspec, sequence_length=100000):
     models = _models()
-    for model, (sim_func, sim_kwargs) in models.items():
+    for model, (model_func, sim_func) in models.items():
         if modelspec == model:
             break
     else:
         raise ValueError(f"{modelspec} not found")
 
-    model_func = sim_kwargs.get("demographic_model")
     _, model, _, _ = model_func(sequence_length, {}, 1234)
     return model
 
@@ -1062,26 +1076,23 @@ def sim(
     sample_counts=None,
 ):
     models = _models()
-    for model, (sim_func, sim_kwargs) in models.items():
+    for model, (model_func, sim_func) in models.items():
         if modelspec == model:
             break
     else:
         raise ValueError(f"{modelspec} not found")
 
-    model_func = sim_kwargs.get("demographic_model")
-    assert model_func is not None
-    del sim_kwargs["demographic_model"]
     assert sample_counts is not None
-    if sample_counts is None:
-        sample_counts = sim_kwargs.get("sample_counts")
-    assert sample_counts is not None
-    del sim_kwargs["sample_counts"]
-    sim_kwargs["min_allele_frequency"] = min_allele_frequency
 
     # Do simulation.
     species, model, contig, samples = model_func(sequence_length, sample_counts, seed)
     ts, (origin, T_mut, T_sel, s) = sim_func(
-        model, contig, samples, seed, slim_script=slim_script, **sim_kwargs
+        model,
+        contig,
+        samples,
+        seed,
+        slim_script=slim_script,
+        min_allele_frequency=min_allele_frequency,
     )
     if ts is None:
         return None
@@ -1095,157 +1106,16 @@ def sim(
     # Add provenance.
     ts = provenance.dedup_slim_provenances(ts)
     params = dict(
-        seed=seed, modelspec=modelspec, origin=origin, T_mut=T_mut, T_sel=T_sel, s=s
+        seed=seed,
+        modelspec=modelspec,
+        origin=origin,
+        T_mut=T_mut,
+        T_sel=T_sel,
+        s=s,
+        min_allele_frequency=min_allele_frequency,
     )
     if command is not None:
         params["command"] = command
-    if len(sim_kwargs) > 0:
-        params["extra_kwargs"] = sim_kwargs
     ts = provenance.save_parameters(ts, _module_name, __version__, **params)
 
     return ts
-
-
-def parse_args():
-    prefixes = "\n".join(_simulations.keys())
-
-    parser = argparse.ArgumentParser(description="Run a simulation.")
-
-    def allele_frequency(arg, parser=parser):
-        try:
-            arg = float(arg)
-            if arg < 0 or arg > 1:
-                raise ValueError
-        except ValueError:
-            parser.error("Allele frequency must be between 0 and 1.")
-        return arg
-
-    def length(arg, parser=parser):
-        x = 1
-        if arg[-1] == "k":
-            x = 1000
-            arg = arg[:-1]
-        elif arg[-1] == "m":
-            x = 1000 * 1000
-            arg = arg[:-1]
-        try:
-            arg = int(arg)
-        except ValueError:
-            parser.error("Length must be an integer, with optional suffix 'k' or 'm'.")
-        return x * arg
-
-    parser.add_argument(
-        "-v",
-        "--verbose",
-        default=False,
-        action="store_true",
-        help="Increase verbosity to debug level.",
-    )
-    parser.add_argument(
-        "-q",
-        "--quiet",
-        default=False,
-        action="store_true",
-        help="Decrease verbosity to error-only level",
-    )
-    parser.add_argument(
-        "-s",
-        "--seed",
-        type=int,
-        default=None,
-        help="Seed for the random number generator.",
-    )
-    parser.add_argument(
-        "-o",
-        "--output-dir",
-        default=".",
-        help="Output directory for the tree sequence files.",
-    )
-    parser.add_argument(
-        "-l",
-        "--length",
-        default="100k",
-        type=length,
-        help="Length of the genomic region to simulate. The suffixes 'k' "
-        "and 'm' are recognised to mean 1,000 or 1,000,000 bases "
-        "respectively [default=%(default)s]",
-    )
-    parser.add_argument(
-        "--slim-script",
-        default=False,
-        action="store_true",
-        help="Print SLiM script to stdout. The simulation is not run.",
-    )
-    parser.add_argument(
-        "-a",
-        "--min-allele-frequency",
-        metavar="AF",
-        default=0.05,
-        type=allele_frequency,
-        help="Condition on the final allele frequency of the selected "
-        "mutation being >AF in the target popuation. "
-        "[default=%(default)s]",
-    )
-    parser.add_argument(
-        "modelspec",
-        help="Model specification. This is either a full model "
-        "specification, or a prefix. If a prefix is used, all model "
-        "specifications with that prefix are printed. "
-        "Available modelspec prefixes:\n"
-        f"{prefixes}",
-    )
-    args = parser.parse_args()
-
-    models = _models()
-    for model, (func, kwargs) in models.items():
-        if args.modelspec == model:
-            break
-    else:
-        found = False
-        for model, (func, kwargs) in models.items():
-            if model.startswith(args.modelspec):
-                found = True
-                print(model)
-                for kw, arg in kwargs.items():
-                    if callable(arg):
-                        continue
-                    print(f"\t\t{kw}: {arg}")
-        if found:
-            exit(1)
-        else:
-            parser.error(f"No models matching spec `{args.modelspec}`.")
-
-    return args
-
-
-if __name__ == "__main__":
-    args = parse_args()
-    if args.seed is not None:
-        seed = args.seed
-    else:
-        random.seed()
-        seed = random.randrange(1, 2 ** 32)
-
-    if args.verbose:
-        config.logger_setup("DEBUG")
-    elif args.quiet:
-        config.logger_setup("ERROR")
-    else:
-        config.logger_setup("INFO")
-
-    ts = sim(
-        args.modelspec,
-        args.length,
-        args.min_allele_frequency,
-        seed=seed,
-        slim_script=args.slim_script,
-        command=" ".join(sys.argv[1:]),
-    )
-
-    if ts is None:
-        assert args.slim_script, "ts is None, but no --slim-script requested"
-        exit(0)
-
-    odir = f"{args.output_dir}/{args.modelspec}"
-    os.makedirs(odir, exist_ok=True)
-    ts.dump(f"{odir}/{seed}.trees")
