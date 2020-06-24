@@ -16,7 +16,7 @@ class HashableDict(dict):
         return tuple(self).__hash__()
 
 
-@functools.lru_cache
+@functools.lru_cache(maxsize=32)
 def basic_sim(sample_counts, sequence_length=int(1e5), min_allele_frequency=0.05):
     modelspec = "HomSap/PapuansOutOfAfrica_10J19/Neutral/msprime"
     model = sim.get_demog_model(modelspec)
