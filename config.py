@@ -253,12 +253,3 @@ class Config:
         # Record the starting indices.
         indices = [0] + list(indices[:-1])
         return dict(zip(self.pop.keys(), indices))
-
-
-if __name__ == "__main__":
-    if len(sys.argv) != 2:
-        print(f"usage: {sys.argv[0]} config.toml")
-    cfg_file = sys.argv[1]
-    cfg = Config(cfg_file)
-    print(cfg.sample_counts())
-    print(cfg.phasing.count(True), cfg.phasing.count(False))
