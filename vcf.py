@@ -1,4 +1,3 @@
-import random
 import itertools
 import subprocess
 import collections
@@ -226,49 +225,3 @@ def coordinates(vcf_files, chr_list, window, step, one_based=True, closed=True):
         ends = starts + window - (1 * closed)
         coords.extend((vcf, chrom, start, end) for start, end in zip(starts, ends))
     return coords
-
-
-def parse_args():
-    import argparse
-
-    parser = argparse.ArgumentParser(description="Extract genotype matrix from a vcf.")
-    parser.add_argument("--chrom", type=str, required=True, help="Chromosome")
-    parser.add_argument("--start", type=int, required=True, help="Start coordinate")
-    parser.add_argument("--end", type=int, required=True, help="End coordinate")
-    parser.add_argument(
-        "--samples", metavar="samples.txt", help="File containing list of samples."
-    )
-    parser.add_argument(
-        "--maf-thres",
-        metavar="MAF",
-        type=float,
-        default=0.05,
-        help="Exclude SNPs with minor allele frequency < MAF [%(default)s].",
-    )
-    parser.add_argument(
-        "--num-rows",
-        type=int,
-        default=32,
-        help="Resize genotype matrices to have this many rows [%(default)s].",
-    )
-    parser.add_argument("vcf", metavar="in.vcf", help="Input vcf/bcf.")
-    return parser.parse_args()
-
-
-if __name__ == "__main__":
-    args = parse_args()
-    rng = random.Random(1234)
-    pos, gt = vcf2mat(
-        vcf=args.vcf,
-        samples=args.samples,
-        chrom=args.chrom,
-        start=args.start,
-        end=args.end,
-        rng=rng,
-        max_missing_thres=0.1,
-        maf_thres=args.maf_thres,
-    )
-    relative_pos = pos - args.start
-    sequence_length = args.end - args.start
-    gt = resize(relative_pos, gt, sequence_length, args.num_rows)
-    print(gt.shape)

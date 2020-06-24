@@ -1,4 +1,3 @@
-import functools
 import tempfile
 import subprocess
 import unittest
@@ -6,48 +5,13 @@ import unittest.mock as mock
 
 import numpy as np
 
-import sim
 import vcf
 import convert
-
-
-# Just for memoizing basic_sim(sample_counts=HashableDict(...)).
-# This is a bad idea in general, so don't use outside these tests.
-class HashableDict(dict):
-    def __hash__(self):
-        return tuple(self).__hash__()
-
-
-@functools.lru_cache
-def basic_sim(sample_counts, sequence_length=int(1e5), min_allele_frequency=0.05):
-    modelspec = "HomSap/PapuansOutOfAfrica_10J19/Neutral/msprime"
-    model = sim.get_demog_model(modelspec)
-    ts = sim.sim(
-        modelspec,
-        sequence_length,
-        min_allele_frequency,
-        seed=1234,
-        sample_counts=sample_counts,
-    )
-    return ts, model
-
-
-def reorder_indices(model, sample_counts):
-    """
-    Return new indices to change model ordering to the sample_counts ordering.
-    """
-    pop_id = {pop.id: j for j, pop in enumerate(model.populations)}
-    new_indices = {}
-    offset = 0
-    for i, (pop, count) in enumerate(sample_counts.items()):
-        j = pop_id[pop]
-        new_indices[j] = offset
-        offset += count
-    return new_indices
+import tests
 
 
 class TestSorting(unittest.TestCase):
-    sample_counts = HashableDict(YRI=10, CHB=20, CEU=30, Papuan=40)
+    sample_counts = tests.HashableDict(YRI=10, CHB=20, CEU=30, Papuan=40)
 
     def verify_sorted(self, A, c):
         assert c.shape[1] == 1
@@ -69,7 +33,7 @@ class TestSorting(unittest.TestCase):
             self.verify_sorted(B, c)
 
     def test_ts_pop_counts_indices(self):
-        ts, model = basic_sim(self.sample_counts)
+        ts, model = tests.basic_sim(self.sample_counts)
         counts, indices = convert.ts_pop_counts_indices(ts)
         self.assertEqual(len(indices), len(counts))
         self.assertEqual(indices.keys(), counts.keys())
@@ -92,7 +56,7 @@ class TestSorting(unittest.TestCase):
             convert.verify_partition([0, 10], [20, 10], 30)
             convert.verify_partition([0, 100], [10, 10], 20)
 
-        ts, model = basic_sim(self.sample_counts)
+        ts, model = tests.basic_sim(self.sample_counts)
         counts, indices = convert.ts_pop_counts_indices(ts)
         convert.verify_partition(
             indices.values(), counts.values(), sum(counts.values())
@@ -102,7 +66,7 @@ class TestSorting(unittest.TestCase):
         rng = np.random.default_rng(seed=31415)
         maf_thres = 0.05
         num_rows = 32
-        ts, model = basic_sim(self.sample_counts)
+        ts, model = tests.basic_sim(self.sample_counts)
         A = convert.ts2mat(ts, num_rows, maf_thres, rng)
 
         counts, indices = convert.ts_pop_counts_indices(ts)
@@ -113,7 +77,7 @@ class TestSorting(unittest.TestCase):
         for i in range(num_rows):
             c[i, 0] = np.mean(A[i, j:k])
 
-        new_indices = reorder_indices(model, self.sample_counts)
+        new_indices = tests.reorder_indices(model, self.sample_counts)
         # Check that per-population submatrices are each sorted.
         # We check with the original population indices, then reorder
         # populations according to new_indices and check again.
@@ -128,11 +92,11 @@ class TestSorting(unittest.TestCase):
 
 
 class TestGenotypeMatrixes(unittest.TestCase):
-    sample_counts = HashableDict(YRI=10, CHB=20, CEU=30, Papuan=40)
+    sample_counts = tests.HashableDict(YRI=10, CHB=20, CEU=30, Papuan=40)
 
     def test_ts_genotype_matrix(self):
         num_haplotypes = sum(self.sample_counts.values())
-        ts, _ = basic_sim(self.sample_counts)
+        ts, _ = tests.basic_sim(self.sample_counts)
         maf_thres = 0.05
         rng = np.random.default_rng(seed=31415)
         for num_rows in (32, 64, 128):
@@ -145,7 +109,7 @@ class TestGenotypeMatrixes(unittest.TestCase):
         maf_thres = 0.05
         num_haplotypes = sum(self.sample_counts.values())
         ac_thres = maf_thres * num_haplotypes
-        ts, _ = basic_sim(self.sample_counts)
+        ts, _ = tests.basic_sim(self.sample_counts)
         positions = [
             # List of MAF filtered positions.
             v.site.position

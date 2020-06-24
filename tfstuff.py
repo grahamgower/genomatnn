@@ -77,14 +77,6 @@ def ConvLayer(n_filt, filt_size, strides=(1, 1)):
     )
 
 
-def InvariantLayer(axis=2, name="invariant"):
-    """
-    This layer applies a function that is invariant to permutation along
-    the specified axis. The mean function used here should be sufficient.
-    """
-    return Lambda(lambda z: K.mean(z, axis=axis, keepdims=True), name=name)
-
-
 def basic_cnn(
     input_shape,
     output_shape,
@@ -118,6 +110,15 @@ def basic_cnn(
     model = models.Model(inputs=main_input, outputs=output, name="basic_cnn")
     model.compile(optimizer="adam", loss="binary_crossentropy", metrics=["accuracy"])
     return model
+
+
+def InvariantLayer(axis=2, name="invariant"):
+    """
+    This layer applies a function that is invariant to permutation along
+    the specified axis.
+    """
+    # TODO: The mean function used here is likely not sufficient.
+    return Lambda(lambda z: K.mean(z, axis=axis, keepdims=True), name=name)
 
 
 def permutation_invariant_cnn(
@@ -260,68 +261,3 @@ def train(conf, train_data, train_labels, val_data, val_labels):
     logger.info(f"Saving model to {conf.nn_hdf5_file}")
     model.save(conf.nn_hdf5_file)
     return history
-
-
-if __name__ == "__main__":
-    import sim
-    import convert
-    import config
-    import tempfile
-    import random
-
-    rng = random.Random()
-    config.logger_setup("DEBUG")
-    tf_config(4)
-
-    # Get some test data/parameters.
-    ts = sim.sim("HomSap/PapuansOutOfAfrica_10J19/Neutral/msprime", int(1e5), 0.05)
-    num_rows = 32
-    num_inds = ts.num_samples
-    pop_counts, pop_indices = convert.ts_pop_counts_indices(ts)
-    with tempfile.TemporaryDirectory() as tmpdir:
-        ts_file = f"{tmpdir}/foo.trees"
-        ts.dump(ts_file)
-        mat = convert.ts_genotype_matrix(
-            ts_file, pop_indices, 0, num_rows, num_inds, 0.05, rng
-        )
-    mat = mat[np.newaxis, :, :, np.newaxis]
-    data_shape = mat.shape
-    assert data_shape[1:3] == (num_rows, num_inds)
-
-    cnn1 = basic_cnn(
-        input_shape=data_shape[1:],
-        output_shape=1,
-        n_conv=3,
-        n_conv_filt=16,
-        filt_size_x=4,
-        filt_size_y=4,
-        n_dense=0,
-        dense_size=0,
-    )
-    cnn1.summary()
-
-    cnn2 = permutation_invariant_cnn(
-        input_shape=data_shape[1:],
-        output_shape=1,
-        n_conv=3,
-        n_conv_filt=16,
-        filt_size=4,
-        n_dense=1,
-        dense_size=4,
-    )
-    cnn2.summary()
-
-    pop_starts = list(pop_indices.values())
-    pop_ends = pop_starts[1:] + [num_inds]
-    cnn3 = per_population_permutation_invariant_cnn(
-        input_shape=data_shape[1:],
-        output_shape=1,
-        pop_starts=pop_starts,
-        pop_ends=pop_ends,
-        n_conv=3,
-        n_conv_filt=16,
-        filt_size=6,
-        n_dense=1,
-        dense_size=4,
-    )
-    cnn3.summary()
