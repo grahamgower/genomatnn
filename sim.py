@@ -306,11 +306,7 @@ def homsap_composite_Nea_to_CEU(
     mut_id = len(mutation_types)
 
     T_Nea_human_split = contact.split_time(model, pop["Nea"], pop["CEU"])
-    assert T_Nea_human_split == 550e3 / model.generation_time
-    T_YRI_CEU_split = contact.split_time(model, pop["YRI"], pop["CEU"])
-    assert T_YRI_CEU_split == 65.7e3 / model.generation_time
     T_Nea_CEU_mig = contact.tmrca(model, pop["Nea"], pop["CEU"])
-    assert T_Nea_CEU_mig == 55e3 / model.generation_time
 
     t_delta = 1e3 / model.generation_time
     T_mut = rng.uniform(T_Nea_CEU_mig + t_delta, T_Nea_human_split)
@@ -425,12 +421,7 @@ def homsap_composite_Sweep_CEU(
     mutation_types.append(positive)
     mut_id = len(mutation_types)
 
-    T_Nea_human_split = contact.split_time(model, pop["Nea"], pop["CEU"])
-    assert T_Nea_human_split == 550e3 / model.generation_time
     T_YRI_CEU_split = contact.split_time(model, pop["YRI"], pop["CEU"])
-    assert T_YRI_CEU_split == 65.7e3 / model.generation_time
-    T_Nea_CEU_mig = contact.tmrca(model, pop["Nea"], pop["CEU"])
-    assert T_Nea_CEU_mig == 55e3 / model.generation_time
 
     T_sel = rng.uniform(1e3 / model.generation_time, T_YRI_CEU_split)
     T_mut = rng.uniform(T_sel, T_YRI_CEU_split)
@@ -562,16 +553,8 @@ def homsap_papuans_AI_Den_to_Papuan(
     T_Den_Nea_split = contact.tmrca(model, pop["DenA"], pop["NeaA"])
     T_DenA_Den1_split = contact.tmrca(model, pop["DenA"], pop["Den1"])
     T_DenA_Den2_split = contact.tmrca(model, pop["DenA"], pop["Den2"])
-
-    assert T_Den_Nea_split == 15090
-    assert T_DenA_Den1_split == 9750
-    assert T_DenA_Den2_split == 12500
-
     T_Den1_Papuan_mig = contact.tmrca(model, pop["Papuan"], pop["Den1"])
     T_Den2_Papuan_mig = contact.tmrca(model, pop["Papuan"], pop["Den2"])
-
-    assert T_Den1_Papuan_mig == 29.8e3 / model.generation_time
-    assert T_Den2_Papuan_mig == 45.7e3 / model.generation_time
 
     if Den == "Den1":
         T_Den_split = T_DenA_Den1_split
@@ -693,7 +676,6 @@ def homsap_papuans_Sweep_Papuan(
     mut_id = len(mutation_types)
 
     T_Papuan_Ghost_split = contact.split_time(model, pop["Papuan"], pop["Ghost"])
-    assert T_Papuan_Ghost_split == 1784, f"{T_Papuan_Ghost_split}"
 
     T_sel = rng.uniform(1e3 / model.generation_time, T_Papuan_Ghost_split)
     T_mut = rng.uniform(T_sel, T_Papuan_Ghost_split)
@@ -792,16 +774,8 @@ def homsap_papuans_AI_Den_to_CHB(
     T_DenA_Den2_split = contact.split_time(model, pop["DenA"], pop["Den2"])
     T_CEU_CHB_split = contact.split_time(model, pop["CEU"], pop["CHB"])
 
-    assert T_Den_Nea_split == 15090
-    assert T_DenA_Den1_split == 9750
-    assert T_DenA_Den2_split == 12500
-    assert T_CEU_CHB_split == 1293
-
     T_Den1_Papuan_mig = contact.tmrca(model, pop["Papuan"], pop["Den1"])
     T_Den2_Papuan_mig = contact.tmrca(model, pop["Papuan"], pop["Den2"])
-
-    assert T_Den1_Papuan_mig == 29.8e3 / model.generation_time
-    assert T_Den2_Papuan_mig == 45.7e3 / model.generation_time
 
     if Den == "Den1":
         T_Den_split = T_DenA_Den1_split
@@ -923,7 +897,6 @@ def homsap_papuans_Sweep_CHB(
     mut_id = len(mutation_types)
 
     T_CEU_CHB_split = contact.split_time(model, pop["CEU"], pop["CHB"])
-    assert T_CEU_CHB_split == 1293, f"{T_CEU_CHB_split}"
 
     T_sel = rng.uniform(1e3 / model.generation_time, T_CEU_CHB_split)
     T_mut = rng.uniform(T_sel, T_CEU_CHB_split)

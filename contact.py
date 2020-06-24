@@ -1,6 +1,5 @@
 import numpy as np
 import msprime
-import stdpopsim
 
 
 def reachable_through_migration(mig_mat, lineages):
@@ -107,91 +106,3 @@ def split_time(model, p1, p2):
                 elif de.source == pops[1]:
                     pops = sorted((pops[0], de.dest))
     return None
-
-
-def _5pop_test_demog(N=1000):
-    populations = [stdpopsim.Population(f"pop{i}", f"Population {i}") for i in range(5)]
-    pop_config = [
-        msprime.PopulationConfiguration(
-            initial_size=N, metadata=populations[i].asdict()
-        )
-        for i in range(len(populations))
-    ]
-    mig_mat = [
-        [0, 0, 0, 0, 0],
-        [0, 0, 1e-5, 0, 0],
-        [0, 0, 0, 0, 0],
-        [0, 0, 0, 0, 0],
-        [0, 0, 0, 0, 0],
-    ]
-    dem_events = [
-        msprime.MassMigration(time=100, source=0, destination=1, proportion=0.1),
-        msprime.MassMigration(time=200, source=3, destination=2),
-        msprime.MigrationRateChange(time=200, rate=0),
-        msprime.MassMigration(time=300, source=1, destination=0),
-        msprime.MassMigration(time=400, source=2, destination=4, proportion=0.1),
-        msprime.MassMigration(time=600, source=2, destination=0),
-        msprime.MassMigration(time=700, source=4, destination=0),
-    ]
-    return stdpopsim.DemographicModel(
-        id="_5pop_test",
-        description="_5pop_test",
-        long_description="_5pop_test",
-        populations=populations,
-        generation_time=1,
-        population_configurations=pop_config,
-        demographic_events=dem_events,
-        migration_matrix=mig_mat,
-    )
-
-
-if __name__ == "__main__":
-    model = _5pop_test_demog()
-    ddb = msprime.DemographyDebugger(
-        demographic_events=model.demographic_events,
-        population_configurations=model.population_configurations,
-        migration_matrix=model.migration_matrix,
-    )
-
-    assert tmrca(model, 0, 1) == 100
-    assert tmrca(model, 0, 2) == 100
-    assert tmrca(model, 1, 2) == 0
-    assert tmrca(model, 0, 3) == 200
-    assert tmrca(model, 1, 3) == 200
-    assert tmrca(model, 2, 3) == 200
-    assert tmrca(model, 0, 4) == 400
-    assert tmrca(model, 1, 4) == 400
-    assert tmrca(model, 2, 4) == 400
-    assert tmrca(model, 3, 4) == 400
-
-    # ancient samples
-    assert (
-        min_coalescence_time(
-            ddb,
-            [
-                msprime.Sample(time=150, population=0),
-                msprime.Sample(time=0, population=1),
-            ],
-        )
-        == 300
-    )
-    assert (
-        min_coalescence_time(
-            ddb,
-            [
-                msprime.Sample(time=150, population=0),
-                msprime.Sample(time=0, population=4),
-            ],
-        )
-        == 700
-    )
-    assert (
-        min_coalescence_time(
-            ddb,
-            [
-                msprime.Sample(time=0, population=0),
-                msprime.Sample(time=450, population=4),
-            ],
-        )
-        == 450
-    )
