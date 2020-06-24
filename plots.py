@@ -24,55 +24,59 @@ import vcf  # noqa: E402
 import calibrate  # noqa: E402
 
 
-def predictions_all_chr(pred_by_chr):
-    pass
-
-
-def predictions_one_chr(fig, ax, header, chrom, preds, chrlen, p_thres=0.9):
+def predictions_all_chr(ax, header, preds_by_chr, lengths_by_chr):
     assert len(header) == 4, "Non-binary predictions not yet supported."
-
-    col = plt.get_cmap("tab20").colors
-    sym = "ods"
-    sym2 = "dso"
-    ec = [col[2], col[4], col[2]]
-    ec2 = [col[0], col[4], col[2]]
-    fc = [col[3], col[5], col[3]]
-    fc2 = [col[1], col[5], col[3]]
-    sz1 = [10, 10, 10]
-    sz2 = [20, 10, 10]
-
-    ax.hlines(p_thres, -0, chrlen, linestyle="--", color="gray", lw=0.5)
-    ax.grid(linestyle="-", color="gray", lw=0.1)
 
     start = header[1]
     end = header[2]
     label = header[3]
-    midpos = (preds[start] + preds[end]) // 2
-    p = preds[label]
-    idx1 = np.where(p > p_thres)
-    idx2 = np.where(np.logical_not(p > p_thres))
+
+    colours = plt.get_cmap("tab10").colors
+    chrpos = []
+    chrmid = []
+    chrnames = []
+    lsum = 0
     i = 0
+    for chrom, preds in preds_by_chr.items():
+        midpos = lsum + (preds[start] + preds[end]) // 2
+        ax.scatter(
+            midpos, preds[label], color=colours[i], marker="o", s=10, rasterized=True,
+        )
+
+        chrlen = lengths_by_chr[chrom]
+        chrpos.append(lsum + chrlen)
+        chrmid.append(lsum + chrlen // 2)
+        chrnames.append(chrom)
+        lsum += chrlen
+        i = (i + 1) % 2
+
+    ax.set_title("CNN predictions")
+    ax.set_xlabel("Genomic coordinate")
+    ax.set_ylabel(label)
+    ax.set_xticks(chrmid)
+    ax.set_xticklabels(chrnames, rotation=90)
+    ax.set_ylim(-0.02, 1.02)
+
+    x1, x2 = ax.get_xlim()
+    for p in (0.5, 0.9):
+        ax.hlines(p, x1, x2, linestyle="--", color="gray", lw=0.5, zorder=0)
+    ax.set_xlim(x1, x2)
+
+
+def predictions_one_chr(ax, header, chrom, preds, chrlen):
+    assert len(header) == 4, "Non-binary predictions not yet supported."
+
+    start = header[1]
+    end = header[2]
+    label = header[3]
+
+    colours = plt.get_cmap("tab10").colors
+    midpos = (preds[start] + preds[end]) // 2
     ax.scatter(
-        midpos[idx1],
-        p[idx1],
-        edgecolor=ec[i],
-        facecolor=fc[i],
-        marker=sym2[i],
-        label=None,
-        s=sz2[i],
-        lw=0.5,
-    )
-    ax.scatter(
-        midpos[idx2],
-        p[idx2],
-        edgecolor=ec2[i],
-        facecolor=fc2[i],
-        marker=sym[i],
-        label=label,
-        s=sz1[i],
-        lw=0.5,
+        midpos, preds[label], color=colours[0], marker="o", s=10, rasterized=True,
     )
     ax.set_ylabel(label)
+    ax.set_xlabel("Genomic coordinate")
 
     xt_interval = 1e7
     if chrlen > 1e8:
@@ -83,11 +87,16 @@ def predictions_one_chr(fig, ax, header, chrom, preds, chrlen, p_thres=0.9):
     xlabels = [str(int(x / 1e6)) + " mbp" for x in xticks]
     ax.set_xticks(xticks)
     ax.set_xticklabels(xlabels)
-    ax.set_xlim([0, chrlen])
+    ax.set_ylim(-0.02, 1.02)
 
-    if not chrom.startswith("chr"):
-        chrom = "chr" + chrom
-    ax.set_title(chrom)
+    x1, x2 = ax.get_xlim()
+    for p in (0.5, 0.9):
+        ax.hlines(p, x1, x2, linestyle="--", color="gray", lw=0.5, zorder=0)
+    ax.set_xlim(x1, x2)
+
+    if chrom.startswith("chr"):
+        chrom = chrom[len("chr") :]
+    ax.set_title(f"CNN predictions: chromosome {chrom}")
 
 
 def load_predictions(pred_file, max_chr_name_len=128):
@@ -105,7 +114,7 @@ def load_predictions(pred_file, max_chr_name_len=128):
     return header, preds_by_chr
 
 
-def predictions(conf, pred_file, pdf_file, aspect=9 / 16, scale=1.0):
+def predictions(conf, pred_file, pdf_file, aspect=9 / 16, scale=1.0, dpi=200):
     header, preds_by_chr = load_predictions(pred_file)
     chrlen = dict(vcf.contig_lengths(conf.file[0]))
 
@@ -124,12 +133,19 @@ def predictions(conf, pred_file, pdf_file, aspect=9 / 16, scale=1.0):
     fig_w *= scale
     fig_h *= scale
 
+    fig, ax = plt.subplots(1, 1, figsize=(fig_w, fig_h))
+    predictions_all_chr(ax, header, preds_by_chr, chrlen)
+    fig.tight_layout()
+    pdf.savefig(figure=fig, dpi=dpi)
+    plt.close(fig)
+
     for chrom, preds in preds_by_chr.items():
         fig, ax = plt.subplots(1, 1, figsize=(fig_w, fig_h))
-        predictions_one_chr(fig, ax, header, chrom, preds, chrlen[chrom])
+        predictions_one_chr(ax, header, chrom, preds, chrlen[chrom])
         fig.tight_layout()
-        pdf.savefig(figure=fig)
+        pdf.savefig(figure=fig, dpi=dpi)
         plt.close(fig)
+
     pdf.close()
 
 

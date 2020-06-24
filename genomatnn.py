@@ -358,8 +358,10 @@ def get_predictions(conf, pred_file):
 
 
 def do_apply(conf):
-    pred_file = conf.nn_hdf5_file[: -len(".hdf5")] + "_predictions.txt"
-    pdf_file = conf.nn_hdf5_file[: -len(".hdf5")] + "_predictions.pdf"
+    plot_dir = pathlib.Path(conf.nn_hdf5_file[: -len(".hdf5")])
+    plot_dir.mkdir(parents=True, exist_ok=True)
+    pred_file = str(plot_dir / "predictions.txt")
+    pdf_file = str(plot_dir / "predictions.pdf")
     if not conf.plot_only:
         get_predictions(conf, pred_file)
     plots.predictions(conf, pred_file, pdf_file)
