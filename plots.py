@@ -261,7 +261,10 @@ def roc(
 
         # PR
         recall = tpr
-        precision = tpr / (tpr + fpr)
+        # precision = tpr / (tpr + fpr)
+        precision = np.true_divide(
+            tpr, tpr + fpr, out=np.full_like(tpr, np.nan), where=tpr + fpr != 0
+        )
 
         # We should do a scatter plot, not a line plot, because linear
         # interpolation is not appropriate for precision-recall curves.
@@ -284,7 +287,11 @@ def roc(
         if len(axs) >= 3:
             tnr = 1 - fpr  # true negative rate (specificity)
             fnr = 1 - tpr  # false negative rate
-            npv = tnr / (tnr + fnr)  # negative predictive value
+            # negative predictive value
+            # npv = tnr / (tnr + fnr)
+            npv = np.true_divide(
+                tnr, tnr + fnr, out=np.full_like(tnr, np.nan), where=tnr + fnr != 0
+            )
 
             axs[2].plot(tnr, npv, color=c, linestyle=ls, label=label)
             # axs[2].scatter(fnr, _for, marker=m, facecolor=c, edgecolor=c, label=label)

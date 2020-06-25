@@ -40,7 +40,7 @@ class Beta(object):
         s_a = np.log(x)
         s_b = -np.log(1.0 - x)
         s = np.column_stack([s_a, s_b])
-        lr = LogisticRegression().fit(s, y)
+        lr = LogisticRegression(solver="lbfgs").fit(s, y)
         a, b, c = lr.coef_[0][0], lr.coef_[0][1], lr.intercept_[0]
         # Should give a>=0 and b>=0. Kull et al. suggest that if this is found
         # to be untrue, the negative parameter should be fixed at zero and
