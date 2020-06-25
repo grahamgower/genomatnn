@@ -104,64 +104,91 @@ class TestGenotypeMatrixes(unittest.TestCase):
         for num_rows in (32, 64, 128):
             A, _ = convert.ts2mat(ts, num_rows, maf_thres, rng)
             self.assertEqual(A.shape, (num_rows, num_haplotypes))
-        # TODO add some actual tests!
+
+        # Check that MAF filtering works. To make this easier, we
+        # set num_rows to the sequence length so there's no resizing.
+        num_rows = int(ts.sequence_length)
+        num_haplotypes = sum(self.sample_counts.values())
+        for maf_thres in (0, 0.01, 0.1):
+            ac_thres = maf_thres * num_haplotypes
+            A, _ = convert.ts2mat(ts, num_rows, maf_thres, rng)
+            self.assertEqual(A.shape, (num_rows, num_haplotypes))
+            positions = [
+                # List of MAF filtered positions.
+                int(v.site.position)
+                for v in ts.variants()
+                if sum(v.genotypes) >= ac_thres
+                and num_haplotypes - sum(v.genotypes) >= ac_thres
+            ]
+            assert len(positions) > 0
+            pset = set(positions)
+            p_complement = [pos for pos in range(num_rows) if pos not in pset]
+            assert len(p_complement) > 0
+            # check allele counts for seg sites and non-seg sites
+            ac_vec = np.sum(A, axis=1)
+            self.assertTrue(all(ac_vec[positions] > 0))
+            self.assertTrue(all(ac_vec[p_complement] == 0))
+            # check MAF filtering worked
+            af_vec = ac_vec[positions] / num_haplotypes
+            self.assertTrue(all(af_vec >= maf_thres))
+            self.assertTrue(all(af_vec <= 1 - maf_thres))
 
     def test_compare_ts_vcf_genotype_matrixes(self):
         # Compare ts genotype matrix to vcf genotype matrix from ts.write_vcf().
-        maf_thres = 0.05
-        num_haplotypes = sum(self.sample_counts.values())
-        ac_thres = maf_thres * num_haplotypes
         ts, _ = tests.basic_sim(self.sample_counts)
-        positions = [
-            # List of MAF filtered positions.
-            v.site.position
-            for v in ts.variants()
-            if sum(v.genotypes) >= ac_thres
-            and num_haplotypes - sum(v.genotypes) >= ac_thres
-        ]
-        individual_names = [f"ind{j}" for j in range(num_haplotypes // 2)]
-        # Mock out random variables to ensure we get consistent behaviour
-        # between ts and vcf versions.
-        rng = mock.MagicMock()
-        rng.random = mock.MagicMock(return_value=0.0)
-        with tempfile.TemporaryDirectory() as tmpdir:
-            vcf_file = tmpdir + "/ts.vcf"
-            samples_file = tmpdir + "/samples.txt"
-            with open(vcf_file, "w") as f:
-                ts.write_vcf(
-                    f,
-                    ploidy=2,
-                    individual_names=individual_names,
-                    position_transform=np.round,
+        for maf_thres in (0, 0.01, 0.1):
+            num_haplotypes = sum(self.sample_counts.values())
+            ac_thres = maf_thres * num_haplotypes
+            positions = [
+                # List of MAF filtered positions.
+                v.site.position
+                for v in ts.variants()
+                if sum(v.genotypes) >= ac_thres
+                and num_haplotypes - sum(v.genotypes) >= ac_thres
+            ]
+            individual_names = [f"ind{j}" for j in range(num_haplotypes // 2)]
+            # Mock out random variables to ensure we get consistent behaviour
+            # between ts and vcf versions.
+            rng = mock.MagicMock()
+            rng.random = mock.MagicMock(return_value=0.0)
+            with tempfile.TemporaryDirectory() as tmpdir:
+                vcf_file = tmpdir + "/ts.vcf"
+                samples_file = tmpdir + "/samples.txt"
+                with open(vcf_file, "w") as f:
+                    ts.write_vcf(
+                        f,
+                        ploidy=2,
+                        individual_names=individual_names,
+                        position_transform=np.round,
+                    )
+                with open(samples_file, "w") as f:
+                    print(*individual_names, file=f, sep="\n")
+                subprocess.run(["bgzip", vcf_file])
+                vcf_file += ".gz"
+                subprocess.run(["bcftools", "index", vcf_file])
+                chrom = "1"
+                start = 1
+                end = int(ts.sequence_length)
+                vcf_pos, V = vcf.vcf2mat(
+                    vcf_file,
+                    samples_file,
+                    chrom,
+                    start,
+                    end,
+                    rng,
+                    maf_thres=maf_thres,
+                    unphase=False,
                 )
-            with open(samples_file, "w") as f:
-                print(*individual_names, file=f, sep="\n")
-            subprocess.run(["bgzip", vcf_file])
-            vcf_file += ".gz"
-            subprocess.run(["bcftools", "index", vcf_file])
-            chrom = "1"
-            start = 1
-            end = int(ts.sequence_length)
-            vcf_pos, V = vcf.vcf2mat(
-                vcf_file,
-                samples_file,
-                chrom,
-                start,
-                end,
-                rng,
-                maf_thres=maf_thres,
-                unphase=False,
-            )
-        np.testing.assert_array_equal(vcf_pos, np.round(positions))
-        for num_rows in (32, 64, 128):
-            A, _ = convert.ts2mat(ts, num_rows, maf_thres, rng)
-            self.assertEqual(A.shape, (num_rows, num_haplotypes))
-            # Use the float `positions` vector to resize here, not the integer
-            # `vcf_pos` vector, to ensure resizing equivalence.
-            B = vcf.resize(positions, V, end, num_rows)
-            self.assertEqual(A.shape, B.shape)
-            self.assertEqual(A.dtype, B.dtype)
-            np.testing.assert_array_equal(A, B)
+            np.testing.assert_array_equal(vcf_pos, np.round(positions))
+            for num_rows in (32, 64, 128):
+                A, _ = convert.ts2mat(ts, num_rows, maf_thres, rng)
+                self.assertEqual(A.shape, (num_rows, num_haplotypes))
+                # Use the float `positions` vector to resize here, not the integer
+                # `vcf_pos` vector, to ensure resizing equivalence.
+                B = vcf.resize(positions, V, end, num_rows)
+                self.assertEqual(A.shape, B.shape)
+                self.assertEqual(A.dtype, B.dtype)
+                np.testing.assert_array_equal(A, B)
 
 
 class PiecewiseConstantSizeMixin:
