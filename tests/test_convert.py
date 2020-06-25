@@ -2,8 +2,10 @@ import tempfile
 import subprocess
 import unittest
 import unittest.mock as mock
+import itertools
 
 import numpy as np
+import stdpopsim
 
 import vcf
 import convert
@@ -67,7 +69,7 @@ class TestSorting(unittest.TestCase):
         maf_thres = 0.05
         num_rows = 32
         ts, model = tests.basic_sim(self.sample_counts)
-        A = convert.ts2mat(ts, num_rows, maf_thres, rng)
+        A, _ = convert.ts2mat(ts, num_rows, maf_thres, rng)
 
         counts, indices = convert.ts_pop_counts_indices(ts)
         pop_id = {pop.id: j for j, pop in enumerate(model.populations)}
@@ -100,7 +102,7 @@ class TestGenotypeMatrixes(unittest.TestCase):
         maf_thres = 0.05
         rng = np.random.default_rng(seed=31415)
         for num_rows in (32, 64, 128):
-            A = convert.ts2mat(ts, num_rows, maf_thres, rng)
+            A, _ = convert.ts2mat(ts, num_rows, maf_thres, rng)
             self.assertEqual(A.shape, (num_rows, num_haplotypes))
         # TODO add some actual tests!
 
@@ -152,7 +154,7 @@ class TestGenotypeMatrixes(unittest.TestCase):
             )
         np.testing.assert_array_equal(vcf_pos, np.round(positions))
         for num_rows in (32, 64, 128):
-            A = convert.ts2mat(ts, num_rows, maf_thres, rng)
+            A, _ = convert.ts2mat(ts, num_rows, maf_thres, rng)
             self.assertEqual(A.shape, (num_rows, num_haplotypes))
             # Use the float `positions` vector to resize here, not the integer
             # `vcf_pos` vector, to ensure resizing equivalence.
@@ -160,3 +162,89 @@ class TestGenotypeMatrixes(unittest.TestCase):
             self.assertEqual(A.shape, B.shape)
             self.assertEqual(A.dtype, B.dtype)
             np.testing.assert_array_equal(A, B)
+
+
+class PiecewiseConstantSizeMixin:
+    """
+    Mixin that sets up a simple demographic model.
+    """
+
+    species = stdpopsim.get_species("HomSap")
+    contig = species.get_contig("chr22", length_multiplier=0.001)  # ~50 kb
+
+    N0 = 1000  # size in the present
+    N1 = 500  # ancestral size
+    T = 500  # generations since size change occurred
+    T_mut = 300  # introduce a mutation at this generation
+    model = stdpopsim.PiecewiseConstantSize(N0, (T, N1))
+    model.generation_time = 1
+    samples = model.get_samples(100)
+    mutation_types = [stdpopsim.ext.MutationType(convert_to_substitution=False)]
+    mut_id = len(mutation_types)
+
+    def allele_frequency(self, ts):
+        """
+        Get the allele frequency of the drawn mutation.
+        """
+        # surely there's a simpler way!
+        assert ts.num_mutations == 1
+        alive = list(
+            itertools.chain.from_iterable(
+                ts.individual(i).nodes for i in ts.individuals_alive_at(0)
+            )
+        )
+        mut = next(ts.mutations())
+        tree = ts.at(ts.site(mut.site).position)
+        have_mut = [u for u in alive if tree.is_descendant(u, mut.node)]
+        af = len(have_mut) / len(alive)
+        return af
+
+
+class TestDrawnMutation(unittest.TestCase, PiecewiseConstantSizeMixin):
+    def test_exclusion_of_drawn_mutation(self):
+        extended_events = [
+            stdpopsim.ext.DrawMutation(
+                time=self.T_mut,
+                mutation_type_id=self.mut_id,
+                population_id=0,
+                coordinate=100,
+                save=True,
+            ),
+            stdpopsim.ext.ConditionOnAlleleFrequency(
+                start_time=0,
+                end_time=0,
+                mutation_type_id=self.mut_id,
+                population_id=0,
+                op=">",
+                allele_frequency=0,
+            ),
+        ]
+        contig = stdpopsim.Contig(
+            mutation_rate=0,
+            recombination_map=self.contig.recombination_map,
+            genetic_map=self.contig.genetic_map,
+        )
+        slim = stdpopsim.get_engine("slim")
+        with mock.patch("warnings.warn", autospec=True):
+            ts = slim.simulate(
+                demographic_model=self.model,
+                contig=contig,
+                samples=self.samples,
+                mutation_types=self.mutation_types,
+                extended_events=extended_events,
+                slim_scaling_factor=10,
+                slim_burn_in=0.1,
+                seed=1,
+            )
+        self.assertEqual(ts.num_mutations, 1)
+        ts_af = self.allele_frequency(ts)
+        self.assertGreaterEqual(ts_af, 0)
+
+        rng = np.random.default_rng(seed=31415)
+        A, af = convert.ts2mat(ts, 32, 0, rng, False)
+        self.assertGreater(A.sum(), 0)
+        self.assertEqual(ts_af, af)
+
+        A, af = convert.ts2mat(ts, 32, 0, rng, True)
+        self.assertEqual(A.sum(), 0)
+        self.assertEqual(ts_af, af)

@@ -85,19 +85,27 @@ def ts2mat(ts, num_rows, maf_thres, rng, exclude_mut_with_metadata=True):
     ac_thres = maf_thres * ts.num_samples
     A = np.zeros((num_rows, ts.num_samples), dtype=np.int8)
     sequence_length = ts.sequence_length
+    af = 0  # Allele frequency of the drawn mutation.
     for variant in ts.variants():
-        if exclude_mut_with_metadata:
-            # We wish to exclude the mutation added in by SLiM that's under
-            # selection in our selection scenarios. It's possible that a CNN
-            # could learn to classify based on this mutation alone, which
-            # is problematic given that we added it in a biologically
-            # unrealistic way (i.e. at a fixed position).
-            # XXX: need a less fragile detection/removal of the drawn mutation.
-            for mut in variant.site.mutations:
-                if len(mut.metadata) > 0:
-                    continue
         genotypes = variant.genotypes
         allele_counts = collections.Counter(genotypes)
+
+        # We wish to exclude the mutation added in by SLiM that's under
+        # selection in our selection scenarios. It's possible that a CNN
+        # could learn to classify based on this mutation alone, which
+        # is problematic given that we added it in a biologically
+        # unrealistic way (i.e. at a fixed position).
+        # XXX: need a less fragile detection/removal of the drawn mutation.
+        skip_variant = False
+        for mut in variant.site.mutations:
+            if len(mut.metadata) > 0:
+                assert af == 0
+                af = allele_counts[1] / (allele_counts[0] + allele_counts[1])
+                if exclude_mut_with_metadata:
+                    skip_variant = True
+        if skip_variant:
+            continue
+
         if allele_counts[0] < ac_thres or allele_counts[1] < ac_thres:
             continue
         # Polarise 0 and 1 in genotype matrix by major allele frequency.
@@ -108,7 +116,7 @@ def ts2mat(ts, num_rows, maf_thres, rng, exclude_mut_with_metadata=True):
             genotypes = genotypes ^ 1
         j = int(num_rows * variant.site.position / sequence_length)
         A[j, :] += genotypes
-    return A
+    return A, af
 
 
 def ts_genotype_matrix(
@@ -127,7 +135,7 @@ def ts_genotype_matrix(
     """
     assert ref_pop in pop_indices
     ts = tskit.load(ts_file)
-    A = ts2mat(ts, num_rows, maf_thres, rng)
+    A, af = ts2mat(ts, num_rows, maf_thres, rng)
     ts_counts, ts_pop_indices = ts_pop_counts_indices(ts)
     if sum(ts_counts.values()) != num_cols:
         raise RuntimeError(
@@ -140,7 +148,8 @@ def ts_genotype_matrix(
     params["modelspec"] = params["modelspec"].replace(
         "HomininComposite_4G19", "HomininComposite_4G20"
     )
-    metadata = tuple(params[k] for k in ("modelspec", "T_mut", "T_sel", "s"))
+    params["AF"] = af
+    metadata = tuple(params[k] for k in ("modelspec", "T_mut", "T_sel", "s", "AF"))
     return B, metadata
 
 
@@ -206,6 +215,7 @@ def _prepare_data(
         ("T_mut", float),
         ("T_sel", float),
         ("s", float),
+        ("AF", float),
     ]
     metadata = np.fromiter(metadata, dtype=metadata_dtype)
     return data, labels, metadata
