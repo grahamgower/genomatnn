@@ -223,12 +223,13 @@ def _prepare_data(
     data = np.array(data, dtype=np.int8)
 
     max_modelspec_len = functools.reduce(max, (len(md[0]) for md in metadata))
+    af_len = len(metadata[0][-1])
     metadata_dtype = [
         ("modelspec", f"U{max_modelspec_len}"),
         ("T_mut", float),
         ("T_sel", float),
         ("s", float),
-        ("AF", (float, len(next(metadata)[-1]))),
+        ("AF", (float, af_len)),
     ]
     metadata = np.fromiter(metadata, dtype=metadata_dtype)
     return data, labels, metadata
