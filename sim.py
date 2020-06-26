@@ -293,6 +293,9 @@ def homsap_composite_Nea_to_CEU(
     slim_script=False,
     min_allele_frequency=0,
     selection=True,
+    logunif_s=True,
+    s_lo=0.001,
+    s_hi=0.1,
     **kwargs,
 ):
     rng = random.Random(seed)
@@ -312,7 +315,11 @@ def homsap_composite_Nea_to_CEU(
     T_mut = rng.uniform(T_Nea_CEU_mig + t_delta, T_Nea_human_split)
     if selection:
         T_sel = rng.uniform(t_delta, T_Nea_CEU_mig)
-        s = rng.uniform(0.001, 0.1)
+        if logunif_s:
+            # uniform on a log scale
+            s = math.exp(rng.uniform(math.log(s_lo), math.log(s_hi)))
+        else:
+            s = rng.uniform(s_lo, s_hi)
     else:
         T_sel = 0
         s = 0
@@ -409,6 +416,9 @@ def homsap_composite_Sweep_CEU(
     dfe=False,
     slim_script=False,
     min_allele_frequency=0,
+    logunif_s=True,
+    s_lo=0.001,
+    s_hi=0.1,
     **kwargs,
 ):
     rng = random.Random(seed)
@@ -425,7 +435,11 @@ def homsap_composite_Sweep_CEU(
 
     T_sel = rng.uniform(1e3 / model.generation_time, T_YRI_CEU_split)
     T_mut = rng.uniform(T_sel, T_YRI_CEU_split)
-    s = rng.uniform(0.001, 0.1)
+    if logunif_s:
+        # uniform on a log scale
+        s = math.exp(rng.uniform(math.log(s_lo), math.log(s_hi)))
+    else:
+        s = rng.uniform(s_lo, s_hi)
 
     coordinate = round(contig.recombination_map.get_length() / 2)
 
@@ -534,6 +548,9 @@ def homsap_papuans_AI_Den_to_Papuan(
     Den="Den1",
     slim_script=False,
     min_allele_frequency=0,
+    logunif_s=True,
+    s_lo=0.001,
+    s_hi=0.1,
     **kwargs,
 ):
     rng = random.Random(seed)
@@ -566,7 +583,11 @@ def homsap_papuans_AI_Den_to_Papuan(
     t_delta = 1e3 / model.generation_time
     T_mut = rng.uniform(T_Den_split + t_delta, T_Den_Nea_split)
     T_sel = rng.uniform(t_delta, T_mig)
-    s = rng.uniform(0.001, 0.1)
+    if logunif_s:
+        # uniform on a log scale
+        s = math.exp(rng.uniform(math.log(s_lo), math.log(s_hi)))
+    else:
+        s = rng.uniform(s_lo, s_hi)
 
     coordinate = round(contig.recombination_map.get_length() / 2)
 
@@ -662,6 +683,9 @@ def homsap_papuans_Sweep_Papuan(
     dfe=False,
     slim_script=False,
     min_allele_frequency=0,
+    logunif_s=True,
+    s_lo=0.001,
+    s_hi=0.1,
     **kwargs,
 ):
     rng = random.Random(seed)
@@ -679,7 +703,11 @@ def homsap_papuans_Sweep_Papuan(
 
     T_sel = rng.uniform(1e3 / model.generation_time, T_Papuan_Ghost_split)
     T_mut = rng.uniform(T_sel, T_Papuan_Ghost_split)
-    s = rng.uniform(0.001, 0.1)
+    if logunif_s:
+        # uniform on a log scale
+        s = math.exp(rng.uniform(math.log(s_lo), math.log(s_hi)))
+    else:
+        s = rng.uniform(s_lo, s_hi)
 
     coordinate = round(contig.recombination_map.get_length() / 2)
 
@@ -755,6 +783,9 @@ def homsap_papuans_AI_Den_to_CHB(
     Den="Den1",
     slim_script=False,
     min_allele_frequency=0,
+    logunif_s=True,
+    s_lo=0.001,
+    s_hi=0.1,
     **kwargs,
 ):
     if Den not in ("Den1", "Den2"):
@@ -787,7 +818,11 @@ def homsap_papuans_AI_Den_to_CHB(
     t_delta = 1e3 / model.generation_time
     T_mut = rng.uniform(T_Den_split + t_delta, T_Den_Nea_split)
     T_sel = rng.uniform(t_delta, T_CEU_CHB_split)
-    s = rng.uniform(0.001, 0.1)
+    if logunif_s:
+        # uniform on a log scale
+        s = math.exp(rng.uniform(math.log(s_lo), math.log(s_hi)))
+    else:
+        s = rng.uniform(s_lo, s_hi)
 
     coordinate = round(contig.recombination_map.get_length() / 2)
 
@@ -883,6 +918,9 @@ def homsap_papuans_Sweep_CHB(
     dfe=False,
     slim_script=False,
     min_allele_frequency=0,
+    logunif_s=True,
+    s_lo=0.001,
+    s_hi=0.1,
     **kwargs,
 ):
     rng = random.Random(seed)
@@ -900,7 +938,11 @@ def homsap_papuans_Sweep_CHB(
 
     T_sel = rng.uniform(1e3 / model.generation_time, T_CEU_CHB_split)
     T_mut = rng.uniform(T_sel, T_CEU_CHB_split)
-    s = rng.uniform(0.001, 0.1)
+    if logunif_s:
+        # uniform on a log scale
+        s = math.exp(rng.uniform(math.log(s_lo), math.log(s_hi)))
+    else:
+        s = rng.uniform(s_lo, s_hi)
 
     coordinate = round(contig.recombination_map.get_length() / 2)
 
@@ -1006,7 +1048,7 @@ _simulations = {
             "Neutral/slim": functools.partial(generic_Neutral, engine="slim"),
             "Neutral/msprime": functools.partial(generic_Neutral, engine="msprime"),
             "DFE": homsap_DFE,
-            "AI/Nea_to_CEU": homsap_composite_Nea_to_CEU,
+            "AI/Nea_to_CEU": functools.partial(homsap_composite_Nea_to_CEU, s_lo=1e-4),
             "Neutral/Nea_to_CEU": functools.partial(
                 homsap_composite_Nea_to_CEU, selection=False
             ),
