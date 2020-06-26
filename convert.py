@@ -78,17 +78,25 @@ def ts_pop_counts_indices(ts):
     return counts, dict(zip(counts.keys(), indices))
 
 
-def ts2mat(ts, num_rows, maf_thres, rng, exclude_mut_with_metadata=True):
+def ts2mat(
+    ts, num_rows, maf_thres, rng, pop_intervals=None, exclude_mut_with_metadata=True
+):
     """
-    Extract genotype matrix from ``ts``, and resize to ``num_rows`` rows.
+    Returns a resized and MAF filtered genotype matrix, plus the allele
+    frequencies of the drawn mutation.
+
+    The genotype matrix is extracted from ``ts``, and resized to ``num_rows``.
+    The allele frequency is calculated for each population defined by the
+    population indexes ``pop_intervals``.
     """
     ac_thres = maf_thres * ts.num_samples
     A = np.zeros((num_rows, ts.num_samples), dtype=np.int8)
     sequence_length = ts.sequence_length
-    af = 0  # Allele frequency of the drawn mutation.
+    if pop_intervals is None:
+        pop_intervals = [(0, ts.num_samples)]
+    af = [0] * len(pop_intervals)  # Allele frequency of the drawn mutation.
     for variant in ts.variants():
         genotypes = variant.genotypes
-        allele_counts = collections.Counter(genotypes)
 
         # We wish to exclude the mutation added in by SLiM that's under
         # selection in our selection scenarios. It's possible that a CNN
@@ -99,12 +107,14 @@ def ts2mat(ts, num_rows, maf_thres, rng, exclude_mut_with_metadata=True):
         skip_variant = False
         for mut in variant.site.mutations:
             if len(mut.metadata) > 0:
-                assert af == 0
-                af = allele_counts[1] / (allele_counts[0] + allele_counts[1])
+                assert all(np.array(af) == 0)
+                af = [genotypes[a:b].sum() / (b - a) for a, b in pop_intervals]
                 if exclude_mut_with_metadata:
                     skip_variant = True
         if skip_variant:
             continue
+
+        allele_counts = collections.Counter(genotypes)
 
         if allele_counts[0] < ac_thres or allele_counts[1] < ac_thres:
             continue
@@ -135,8 +145,11 @@ def ts_genotype_matrix(
     """
     assert ref_pop in pop_indices
     ts = tskit.load(ts_file)
-    A, af = ts2mat(ts, num_rows, maf_thres, rng)
     ts_counts, ts_pop_indices = ts_pop_counts_indices(ts)
+    pop_partition = [
+        (j, j + n) for j, n in zip(ts_pop_indices.values(), ts_counts.values())
+    ]
+    A, af = ts2mat(ts, num_rows, maf_thres, rng, pop_intervals=pop_partition)
     if sum(ts_counts.values()) != num_cols:
         raise RuntimeError(
             f"{ts_file}: found {sum(ts_counts.values())} samples, "
@@ -148,7 +161,7 @@ def ts_genotype_matrix(
     params["modelspec"] = params["modelspec"].replace(
         "HomininComposite_4G19", "HomininComposite_4G20"
     )
-    params["AF"] = af
+    params["AF"] = np.array(af)
     metadata = tuple(params[k] for k in ("modelspec", "T_mut", "T_sel", "s", "AF"))
     return B, metadata
 
@@ -215,7 +228,7 @@ def _prepare_data(
         ("T_mut", float),
         ("T_sel", float),
         ("s", float),
-        ("AF", float),
+        ("AF", (float, len(next(metadata)[-1]))),
     ]
     metadata = np.fromiter(metadata, dtype=metadata_dtype)
     return data, labels, metadata

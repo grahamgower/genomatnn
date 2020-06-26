@@ -268,10 +268,12 @@ class TestDrawnMutation(unittest.TestCase, PiecewiseConstantSizeMixin):
         self.assertGreaterEqual(ts_af, 0)
 
         rng = np.random.default_rng(seed=31415)
-        A, af = convert.ts2mat(ts, 32, 0, rng, False)
+        A, af = convert.ts2mat(ts, 32, 0, rng, exclude_mut_with_metadata=False)
         self.assertGreater(A.sum(), 0)
-        self.assertEqual(ts_af, af)
+        self.assertEqual(len(af), 1)
+        self.assertEqual(ts_af, af[0])
 
-        A, af = convert.ts2mat(ts, 32, 0, rng, True)
+        A, af = convert.ts2mat(ts, 32, 0, rng, exclude_mut_with_metadata=True)
         self.assertEqual(A.sum(), 0)
-        self.assertEqual(ts_af, af)
+        self.assertEqual(len(af), 1)
+        self.assertEqual(ts_af, af[0])
