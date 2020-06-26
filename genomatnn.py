@@ -109,6 +109,8 @@ def do_eval(conf):
     _, _, _, val_data, val_labels, val_metadata = data
 
     extra_sims = conf.get("sim.extra")
+    if extra_sims is not None and len(extra_sims) == 0:
+        extra_sims = None
     if extra_sims is not None:
         extra_cache = conf.dir / f"zarrcache_{conf.num_rows}-rows_extra"
         rng = random.Random(conf.seed)

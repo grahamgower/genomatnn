@@ -201,6 +201,8 @@ def roc(
         fp_list.append(fp)
 
     extra_sims = conf.get("sim.extra")
+    if extra_sims is not None and len(extra_sims) == 0:
+        extra_sims = None
     if extra_sims is not None:
         assert extra_labels is not None
         assert extra_pred is not None
@@ -226,7 +228,10 @@ def roc(
         fp_pfx = longest_common_prefix(false_modelspecs)
         fp_labels = [spec[len(fp_pfx) :] for spec in false_modelspecs]
     else:
-        fp_labels = false_modelspecs
+        try:
+            fp_labels = ["/".join(spec.split("/")[-2:]) for spec in false_modelspecs]
+        except IndexError:
+            fp_labels = false_modelspecs
 
     if inset:
         ax0_inset = zoomed_inset_axes(axs[0], 4, loc="center")
@@ -483,15 +488,22 @@ def confusion(conf, labels, pred, metadata, pdf_file, aspect=10 / 16, scale=1.5)
     aspect = conf.get("eval.confusion.plot.aspect", aspect)
     scale = conf.get("eval.confusion.plot.scale", scale)
 
-    pdf = PdfPages(pdf_file)
-    fig_w, fig_h = plt.figaspect(aspect)
-    fig, axs = plt.subplots(1, 2, figsize=(scale * fig_w, scale * fig_h))
-
-    modelspecs = list(itertools.chain(*conf.tranche.values()))
+    false_modelspecs, true_modelspecs = list(conf.tranche.values())
+    modelspecs = false_modelspecs + true_modelspecs
     assert set(modelspecs) == set(np.unique(metadata["modelspec"]))
 
     n_labels = 2
     n_modelspecs = len(modelspecs)
+    n_fmodelspecs = len(false_modelspecs)
+
+    pdf = PdfPages(pdf_file)
+    fig_w, fig_h = plt.figaspect(aspect)
+    fig, axs = plt.subplots(
+        1, 2 if n_fmodelspecs > 1 else 1, figsize=(scale * fig_w, scale * fig_h)
+    )
+    if n_fmodelspecs == 1:
+        axs = [axs]
+
     cm_labels = np.empty(shape=(n_labels, n_labels))
     cm_modelspecs = np.empty(shape=(n_labels, n_modelspecs))
 
@@ -503,22 +515,27 @@ def confusion(conf, labels, pred, metadata, pdf_file, aspect=10 / 16, scale=1.5)
             n_true = len(np.where(labels[idx] == j)[0])
             cm_labels[i, j] = n_true / n_pred
 
-    # labels x modelspecs
-    for i in range(n_labels):
-        idx = np.where(np.abs(pred - i) < 0.5)[0]
-        n_pred = len(idx)
-        for j in range(n_modelspecs):
-            n_true = len(np.where(metadata["modelspec"][idx] == modelspecs[j])[0])
-            cm_modelspecs[i, j] = n_true / n_pred
+    if n_fmodelspecs > 1:
+        # labels x modelspecs
+        for i in range(n_labels):
+            idx = np.where(np.abs(pred - i) < 0.5)[0]
+            n_pred = len(idx)
+            for j in range(n_modelspecs):
+                n_true = len(np.where(metadata["modelspec"][idx] == modelspecs[j])[0])
+                cm_modelspecs[i, j] = n_true / n_pred
 
     modelspec_pfx = longest_common_prefix(modelspecs)
     short_modelspecs = [mspec[len(modelspec_pfx) :] for mspec in modelspecs]
     tranch_keys = list(conf.tranche.keys())
 
     confusion1(axs[0], cm_labels, tranch_keys, tranch_keys, cbar=False)
-    confusion1(axs[1], cm_modelspecs, tranch_keys, short_modelspecs)
+    if n_fmodelspecs > 1:
+        confusion1(axs[1], cm_modelspecs, tranch_keys, short_modelspecs)
 
-    fig.suptitle("Confusion matrices")
+    if n_fmodelspecs > 1:
+        fig.suptitle("Confusion matrices")
+    else:
+        axs[0].set_title("Confusion matrix")
     fig.tight_layout()
     pdf.savefig(figure=fig)
     plt.close(fig)
