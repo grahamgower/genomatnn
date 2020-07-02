@@ -1,9 +1,13 @@
+import collections
+import logging
 import warnings
 
 import numpy as np
 from sklearn.linear_model import LogisticRegression
 from sklearn.isotonic import IsotonicRegression
 from sklearn.calibration import _sigmoid_calibration
+
+logger = logging.getLogger(__name__)
 
 
 def Z_score(p, y):
@@ -100,3 +104,53 @@ class Platt(object):
 
 
 calibration_classes = (Beta, Isotonic, Platt)
+
+
+def groupby_indexes(a):
+    indexes = collections.defaultdict(list)
+    for j, k in enumerate(a):
+        indexes[k].append(j)
+    return [np.array(v) for v in indexes.values()]
+
+
+def upsample_indexes(metadata, weights=None, rng=None):
+    """
+    Return indexes that would upsample the metadata array to have modelspec
+    proportions matching the given weights.
+    """
+    if rng is None:
+        rng = np.random.default_rng(1234)
+    modelspecs = np.unique(metadata["modelspec"])
+    if weights is None:
+        weights = {m: 1 for m in modelspecs}
+    w = np.array([weights[m] for m in modelspecs])
+
+    indexes = groupby_indexes(metadata["modelspec"])
+    q = np.array([len(ind) for ind in indexes])
+
+    # Given vector of counts, q, we want to achieve proportions w,
+    # while retaining all samples in our smallest category.
+    # j is the index of our constraining category.
+    j = (q * w).argmin()
+    # We'll upsample to p[i] for each category i.
+    p = (q[j] * w / w[j]).round().astype(int)
+    assert p[j] == q[j]
+
+    upidx = []
+    for i in range(len(modelspecs)):
+        # Sample with replacement only if we need more than are available
+        replace = p[i] > q[i]
+        ind = rng.choice(indexes[i], size=p[i], replace=replace)
+        upidx.append(ind)
+
+    return np.hstack(upidx)
+
+
+def calibrate(conf, labels, metadata, pred, cal=None):
+    weights = conf.get("calibrate.weights")
+    upidx = upsample_indexes(metadata, weights)
+    logger.info(f"Fitting {conf.calibration.__name__} calibration")
+    if cal is None:
+        assert conf.calibration is not None
+        cal = conf.calibration()
+    return cal.fit(pred[upidx], labels[upidx])

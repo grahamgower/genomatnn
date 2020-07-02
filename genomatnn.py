@@ -106,7 +106,7 @@ def do_eval(conf):
     cache = conf.dir / f"zarrcache_{conf.num_rows}-rows"
     data = convert.load_data_cache(cache)
     convert.check_data(data, conf.tranche, conf.num_rows, conf.num_cols)
-    _, _, _, val_data, val_labels, val_metadata = data
+    train_data, train_labels, train_metadata, val_data, val_labels, val_metadata = data
 
     extra_sims = conf.get("sim.extra")
     if extra_sims is not None and len(extra_sims) == 0:
@@ -150,6 +150,7 @@ def do_eval(conf):
     strategy = tf.distribute.MirroredStrategy()
 
     with strategy.scope():
+        train_pred = model.predict(train_data)
         val_pred = model.predict(val_data)
         if extra_sims is not None:
             extra_pred = model.predict(extra_data)
@@ -157,13 +158,12 @@ def do_eval(conf):
     if val_pred.shape[1] != 1:
         raise NotImplementedError("Only binary predictions are supported")
     val_pred = val_pred[:, 0]
+    train_pred = train_pred[:, 0]
     if extra_sims is not None:
         extra_pred = extra_pred[:, 0]
 
     if conf.calibration is not None:
-        logger.info(f"Fitting {conf.calibration.__name__} calibration")
-        cal = conf.calibration()
-        fit = cal.fit(val_pred, val_labels)
+        fit = calibrate.calibrate(conf, train_labels, train_metadata, train_pred)
         val_pred_cal = fit.predict(val_pred)
         if extra_sims is not None:
             extra_pred_cal = fit.predict(extra_pred)
@@ -177,15 +177,18 @@ def do_eval(conf):
         extra_labels = None
         extra_metadata = None
 
+    weights = conf.get("calibrate.weights")
+    val_upidx = calibrate.upsample_indexes(val_metadata, weights)
+
     hap_pdf = str(plot_dir / "genotype_matrices.pdf")
     plots.ts_hap_matrix(conf, val_data, val_pred, val_metadata, hap_pdf)
 
     roc_pdf = str(plot_dir / "roc.pdf")
     plots.roc(
         conf,
-        val_labels,
-        val_pred_cal,
-        val_metadata,
+        val_labels[val_upidx],
+        val_pred_cal[val_upidx],
+        val_metadata[val_upidx],
         extra_labels,
         extra_pred_cal,
         extra_metadata,
@@ -199,19 +202,15 @@ def do_eval(conf):
     plots.confusion(conf, val_labels, val_pred_cal, val_metadata, confusion_pdf)
 
     # Apply various calibrations to the prediction probabilties.
-    # We use only the first half of the validation set for calibrating,
-    # and calculate reliability on the second half.
-    n = len(val_pred)
-    x1, y1 = val_pred[: n // 2], val_labels[: n // 2]
-    x2, y2 = val_pred[n // 2 :], val_labels[n // 2 :]
-    preds = [("Uncal.", x2)]
+    upidx = calibrate.upsample_indexes(train_metadata, weights)
+    preds = [("Uncal.", val_pred[val_upidx])]
     for cc in calibrate.calibration_classes:
         label = cc.__name__
-        cc_x_pred = cc().fit(x1, y1).predict(x2)
-        preds.append((label, cc_x_pred))
+        cc_pred = cc().fit(train_pred[upidx], train_labels[upidx]).predict(val_pred)
+        preds.append((label, cc_pred[val_upidx]))
 
     reliability_pdf = str(plot_dir / "reliability.pdf")
-    plots.reliability(conf, y2, preds, reliability_pdf)
+    plots.reliability(conf, val_labels[val_upidx], preds, reliability_pdf)
 
 
 def vcf_get1(
@@ -336,14 +335,13 @@ def get_predictions(conf, pred_file):
         cache = conf.dir / f"zarrcache_{conf.num_rows}-rows"
         data = convert.load_data_cache(cache)
         convert.check_data(data, conf.tranche, conf.num_rows, conf.num_cols)
-        _, _, _, val_data, val_labels, _ = data
+        train_data, train_labels, train_metadata, _, _, _ = data
         with strategy.scope():
-            val_pred = model.predict(val_data)
-        if val_pred.shape[1] != 1:
+            train_pred = model.predict(train_data)
+        if train_pred.shape[1] != 1:
             raise NotImplementedError("Only binary predictions are supported")
-        val_pred = val_pred[:, 0]
-        logger.info(f"Fitting {conf.calibration.__name__} calibration")
-        cal = conf.calibration().fit(val_pred, val_labels)
+        train_pred = train_pred[:, 0]
+        cal = calibrate.calibrate(conf, train_labels, train_metadata, train_pred)
 
     label = list(conf.tranche.keys())[1]
     with open(pred_file, "w") as f:
