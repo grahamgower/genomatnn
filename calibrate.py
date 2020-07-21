@@ -110,34 +110,35 @@ def groupby_indexes(a):
     indexes = collections.defaultdict(list)
     for j, k in enumerate(a):
         indexes[k].append(j)
-    return [np.array(v) for v in indexes.values()]
+    return list(indexes.keys()), [np.array(v) for v in indexes.values()]
 
 
-def upsample_indexes(metadata, weights=None, rng=None):
+def resample_indexes(a, weights=None, rng=None):
     """
-    Return indexes that would upsample the metadata array to have modelspec
+    Return indexes that would resample array ``a`` to have unique category
     proportions matching the given weights.
+    All samples are retained from the smallest category, and other
+    categories may be up- or down-sampled, depending on the the desired
+    weights.
     """
     if rng is None:
         rng = np.random.default_rng(1234)
-    modelspecs = np.unique(metadata["modelspec"])
+    unique, indexes = groupby_indexes(a)
     if weights is None:
-        weights = {m: 1 for m in modelspecs}
-    w = np.array([weights[m] for m in modelspecs])
-
-    indexes = groupby_indexes(metadata["modelspec"])
+        weights = {m: 1 for m in unique}
+    w = np.array([weights[m] for m in unique])
     q = np.array([len(ind) for ind in indexes])
 
     # Given vector of counts, q, we want to achieve proportions w,
     # while retaining all samples in our smallest category.
     # j is the index of our constraining category.
     j = (q * w).argmin()
-    # We'll upsample to p[i] for each category i.
+    # We'll resample to p[i] for each category i.
     p = (q[j] * w / w[j]).round().astype(int)
     assert p[j] == q[j]
 
     upidx = []
-    for i in range(len(modelspecs)):
+    for i in range(len(unique)):
         # Sample with replacement only if we need more than are available
         replace = p[i] > q[i]
         ind = rng.choice(indexes[i], size=p[i], replace=replace)
@@ -148,7 +149,7 @@ def upsample_indexes(metadata, weights=None, rng=None):
 
 def calibrate(conf, labels, metadata, pred, cal=None):
     weights = conf.get("calibrate.weights")
-    upidx = upsample_indexes(metadata, weights)
+    upidx = resample_indexes(metadata["modelspec"], weights)
     logger.info(f"Fitting {conf.calibration.__name__} calibration")
     if cal is None:
         assert conf.calibration is not None

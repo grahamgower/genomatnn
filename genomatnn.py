@@ -178,7 +178,7 @@ def do_eval(conf):
         extra_metadata = None
 
     weights = conf.get("calibrate.weights")
-    val_upidx = calibrate.upsample_indexes(val_metadata, weights)
+    val_upidx = calibrate.resample_indexes(val_metadata["modelspec"], weights)
 
     hap_pdf = str(plot_dir / "genotype_matrices.pdf")
     plots.ts_hap_matrix(conf, val_data, val_pred, val_metadata, hap_pdf)
@@ -202,7 +202,7 @@ def do_eval(conf):
     plots.confusion(conf, val_labels, val_pred_cal, val_metadata, confusion_pdf)
 
     # Apply various calibrations to the prediction probabilties.
-    upidx = calibrate.upsample_indexes(train_metadata, weights)
+    upidx = calibrate.resample_indexes(train_metadata["modelspec"], weights)
     preds = [("Uncal.", val_pred[val_upidx])]
     for cc in calibrate.calibration_classes:
         label = cc.__name__
