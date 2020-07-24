@@ -245,7 +245,7 @@ def _prepare_training_data(
     rng,
     parallelism,
     maf_thres,
-    train_frac=0.9,
+    train_frac,
 ):
     """
     Load and label the data, then split into training and validation sets.
@@ -366,6 +366,7 @@ def prepare_training_data(
     parallelism,
     maf_thres,
     cache,
+    train_frac,
 ):
     """
     Wrapper for _prepare_training_data() that maintains an on-disk zarr cache.
@@ -384,6 +385,7 @@ def prepare_training_data(
             rng,
             parallelism,
             maf_thres,
+            train_frac,
         )
         save_data_cache(cache, data)
     check_data(data, tranche, num_rows, num_cols)

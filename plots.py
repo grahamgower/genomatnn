@@ -513,7 +513,10 @@ def confusion(conf, labels, pred, metadata, pdf_file, aspect=10 / 16, scale=1.5)
         n_pred = len(idx)
         for j in range(n_labels):
             n_true = len(np.where(labels[idx] == j)[0])
-            cm_labels[i, j] = n_true / n_pred
+            if n_pred == 0:
+                cm_labels[i, j] = float("nan")
+            else:
+                cm_labels[i, j] = n_true / n_pred
 
     if n_fmodelspecs > 1:
         # labels x modelspecs
@@ -522,7 +525,10 @@ def confusion(conf, labels, pred, metadata, pdf_file, aspect=10 / 16, scale=1.5)
             n_pred = len(idx)
             for j in range(n_modelspecs):
                 n_true = len(np.where(metadata["modelspec"][idx] == modelspecs[j])[0])
-                cm_modelspecs[i, j] = n_true / n_pred
+                if n_pred == 0:
+                    cm_modelspecs[i, j] = float("nan")
+                else:
+                    cm_modelspecs[i, j] = n_true / n_pred
 
     modelspec_pfx = longest_common_prefix(modelspecs)
     short_modelspecs = [mspec[len(modelspec_pfx) :] for mspec in modelspecs]

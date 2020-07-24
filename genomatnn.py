@@ -84,6 +84,7 @@ def do_train(conf):
         parallelism,
         conf.maf_threshold,
         cache,
+        conf.get("train.train_frac", 0.9)
     )
     train_data, train_labels, _, val_data, val_labels, _ = data
     n_train = train_data.shape[0]
@@ -413,7 +414,7 @@ def do_vcfplot(conf):
     plots.vcf_hap_matrix(conf, vcf_batch_gen, conf.pdf_file)
 
 
-def parse_args():
+def parse_args(args_list):
     parser = argparse.ArgumentParser(
         description="Simulate, train, and apply a CNN to genotype matrices."
     )
@@ -553,7 +554,7 @@ def parse_args():
         help="bcftools-like region(s) to plot, of the form chrom:a-b",
     )
 
-    args = parser.parse_args()
+    args = parser.parse_args(args_list)
     args.conf = config.Config(args.conf)
 
     if args.parallelism > 0:
@@ -598,7 +599,11 @@ def parse_args():
     return args
 
 
-if __name__ == "__main__":
+def main(args_list=None):
     random.seed()
-    args = parse_args()
+    args = parse_args(args_list)
     args.func(args.conf)
+
+
+if __name__ == "__main__":
+    main()

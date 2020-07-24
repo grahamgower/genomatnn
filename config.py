@@ -164,7 +164,7 @@ class Config:
         for fn in self.file:
             if not fn.exists():
                 raise ConfigError(f"{fn}: file not found.")
-        self.phasing = vcf.sample_phasing(self.file[0], self.vcf_samples)
+        self.phasing = vcf.sample_phasing(str(self.file[0]), self.vcf_samples)
 
     def _getcfg_train(self):
         train = self.config.get("train")
