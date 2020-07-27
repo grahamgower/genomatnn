@@ -21,7 +21,11 @@ def sample_phasing(vcf, sample_list):
         cmd = ["bcftools", "query", "-S", samples_file, "-f", "[%GT\t]\\n", vcf]
 
         with subprocess.Popen(
-            cmd, bufsize=1, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE
+            cmd,
+            bufsize=1,
+            universal_newlines=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
         ) as p:
             for line in p.stdout:
                 gt_str_list = line.split()
@@ -50,7 +54,11 @@ def contig_lengths(vcf):
     contigs = []
     cmd = ["bcftools", "view", "-h", vcf]
     with subprocess.Popen(
-        cmd, bufsize=1, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE
+        cmd,
+        bufsize=1,
+        universal_newlines=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
     ) as p:
         for line in p.stdout:
             if line.startswith("##contig="):
@@ -135,7 +143,11 @@ def vcf2mat(
     gt = []
 
     with subprocess.Popen(
-        cmd, bufsize=1, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE
+        cmd,
+        bufsize=1,
+        universal_newlines=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
     ) as p:
         for line in p.stdout:
             fields = line.split()
