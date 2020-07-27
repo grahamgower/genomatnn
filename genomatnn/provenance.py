@@ -2,14 +2,16 @@ import json
 
 import kastore
 
+import genomatnn
 
-def save_parameters(ts, name, version, **parameters):
+
+def save_parameters(ts, **parameters):
     """
     Save parameters to a tskit provenance record.
     """
     provenance = {
         "schema_version": "1.0.0",
-        "software": {"name": name, "version": version},
+        "software": {"name": genomatnn.__name__, "version": genomatnn.__version__},
         "parameters": parameters,
         # "environment": tskit.provenance.get_environment()
     }
@@ -21,20 +23,20 @@ def save_parameters(ts, name, version, **parameters):
     return ts
 
 
-def load_parameters(ts, name):
+def load_parameters(ts):
     """
-    Load parameters from `name` in the provenance record.
+    Load parameters from the provenance record.
     """
     for p in ts.provenances():
         d = json.loads(p.record)
-        if d["software"]["name"] == name:
+        if d["software"]["name"] == genomatnn.__name__:
             return d.get("parameters")
     return None
 
 
-def load_parameters_from_file(filename, name):
+def load_parameters_from_file(filename):
     """
-    Load parameters from `name` in the provenance record of `filename`.
+    Load parameters from the provenance record of `filename`.
 
     Using tskit can be slow when loading provenance records for a lot of files.
     We deliberately bypass the tskit API here, so that we don't unnecessarily
@@ -46,7 +48,7 @@ def load_parameters_from_file(filename, name):
     for j in record_offset[1:]:
         record = ka["provenances/record"][i:j].tostring()
         d = json.loads(record)
-        if d["software"]["name"] == name:
+        if d["software"]["name"] == genomatnn.__name__:
             return d.get("parameters")
         i = j
     return None

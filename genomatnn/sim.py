@@ -10,12 +10,11 @@ import attr
 import msprime
 import stdpopsim
 
-import provenance
-import contact
+from genomatnn import (
+    provenance,
+    contact,
+)
 
-
-_module_name = "genomatnn"
-__version__ = "0.1"
 
 logger = logging.getLogger(__name__)
 
@@ -1131,6 +1130,6 @@ def sim(
     )
     if command is not None:
         params["command"] = command
-    ts = provenance.save_parameters(ts, _module_name, __version__, **params)
+    ts = provenance.save_parameters(ts, **params)
 
     return ts

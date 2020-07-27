@@ -20,8 +20,10 @@ from mpl_toolkits.axes_grid1.inset_locator import (  # noqa: E402
 )
 from mpl_toolkits import axes_grid1  # noqa: E402
 
-import vcf  # noqa: E402
-import calibrate  # noqa: E402
+from genomatnn import (  # noqa: E402
+    vcf,
+    calibrate,
+)
 
 
 def predictions_all_chr(ax, header, preds_by_chr, lengths_by_chr):

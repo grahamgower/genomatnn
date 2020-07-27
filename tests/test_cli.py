@@ -9,9 +9,11 @@ import shutil
 
 import toml
 
-import genomatnn
-import config
-import sim
+from genomatnn import (
+    config,
+    sim,
+    cli,
+)
 
 
 @contextlib.contextmanager
@@ -42,10 +44,10 @@ class ConfigMixin:
         cls.conf = config.Config(cls.config_file)
 
         if cls.need_sim_data:
-            with mock.patch("sim._models", new=sim__models()):
-                genomatnn.main(f"sim -n 10 --seed 1 {cls.config_file}".split())
+            with mock.patch("genomatnn.sim._models", new=sim__models()):
+                cli.main(f"sim -n 10 --seed 1 {cls.config_file}".split())
                 if cls.need_trained_model:
-                    genomatnn.main(f"train --seed 1 {cls.config_file}".split())
+                    cli.main(f"train --seed 1 {cls.config_file}".split())
                     models = list(cls.conf.dir.glob("*.hdf5"))
                     assert len(models) == 1
                     cls.nn_hdf5_file = str(models[0])
@@ -71,10 +73,10 @@ def sim__models(
 class TestSim(ConfigMixin, unittest.TestCase):
     def test_missing_config_file(self):
         with self.assertRaises(FileNotFoundError):
-            genomatnn.main(["sim", "nonexistent.toml"])
+            cli.main(["sim", "nonexistent.toml"])
 
     def test_list_modelspecs(self):
-        with capture(genomatnn.main, f"sim -l {self.config_file}".split()) as (
+        with capture(cli.main, f"sim -l {self.config_file}".split()) as (
             out,
             err,
         ):
@@ -87,9 +89,9 @@ class TestSim(ConfigMixin, unittest.TestCase):
             ]:
                 self.assertTrue(modelspec in modelspecs)
 
-    @mock.patch("sim._models", new=sim__models())
+    @mock.patch("genomatnn.sim._models", new=sim__models())
     def test_sim(self):
-        genomatnn.main(f"sim -n 2 {self.config_file}".split())
+        cli.main(f"sim -n 2 {self.config_file}".split())
         path = pathlib.Path(self.temp_dir.name)
         ts_files = list(path.glob("**/*.trees"))
         self.assertEqual(len(ts_files), 2 * 3)
@@ -106,24 +108,24 @@ class TestTrain(ConfigMixin, unittest.TestCase):
 
     def test_missing_config_file(self):
         with self.assertRaises(FileNotFoundError):
-            genomatnn.main(["train", "nonexistent.toml"])
+            cli.main(["train", "nonexistent.toml"])
 
-    @mock.patch("genomatnn.do_eval", autospec=True)
+    @mock.patch("genomatnn.cli.do_eval", autospec=True)
     def test_train(self, mocked_do_eval):
-        genomatnn.main(f"train {self.config_file}".split())
+        cli.main(f"train {self.config_file}".split())
         cache_dirs = list(self.conf.dir.glob("zarrcache_*"))
         models = list(self.conf.dir.glob("*.hdf5"))
         self.assertEqual(len(cache_dirs), 1)
         self.assertEqual(len(models), 1)
         self.assertEqual(mocked_do_eval.call_count, 1)
 
-    @mock.patch("genomatnn.do_eval", autospec=True)
+    @mock.patch("genomatnn.cli.do_eval", autospec=True)
     def test_train_from_cache(self, mocked_do_eval):
-        genomatnn.main(f"train -c {self.config_file}".split())
+        cli.main(f"train -c {self.config_file}".split())
         cache_dirs = list(self.conf.dir.glob("zarrcache_*"))
         self.assertEqual(len(cache_dirs), 1)
 
-        genomatnn.main(f"train {self.config_file}".split())
+        cli.main(f"train {self.config_file}".split())
         cache_dirs = list(self.conf.dir.glob("zarrcache_*"))
         models = list(self.conf.dir.glob("*.hdf5"))
         self.assertEqual(len(cache_dirs), 1)
@@ -137,14 +139,14 @@ class TestEval(ConfigMixin, unittest.TestCase):
 
     def test_missing_config_file(self):
         with self.assertRaises(FileNotFoundError):
-            genomatnn.main(f"eval nonexistent.toml {self.nn_hdf5_file}".split())
+            cli.main(f"eval nonexistent.toml {self.nn_hdf5_file}".split())
 
     def test_missing_nn_hdf5_file(self):
         with self.assertRaises((FileNotFoundError, IOError)):
-            genomatnn.main(f"eval {self.config_file} nonexistent.hdf5".split())
+            cli.main(f"eval {self.config_file} nonexistent.hdf5".split())
 
     def test_eval_creates_plots(self):
-        genomatnn.main(f"eval {self.config_file} {self.nn_hdf5_file}".split())
+        cli.main(f"eval {self.config_file} {self.nn_hdf5_file}".split())
         plot_dir = pathlib.Path(self.nn_hdf5_file[: -len(".hdf5")])
         for plot_file in [
             "genotype_matrices.pdf",
@@ -162,14 +164,14 @@ class TestApply(ConfigMixin, unittest.TestCase):
 
     def test_missing_config_file(self):
         with self.assertRaises(FileNotFoundError):
-            genomatnn.main(f"apply nonexistent.toml {self.nn_hdf5_file}".split())
+            cli.main(f"apply nonexistent.toml {self.nn_hdf5_file}".split())
 
     def test_missing_nn_hdf5_file(self):
         with self.assertRaises((FileNotFoundError, IOError)):
-            genomatnn.main(f"apply {self.config_file} nonexistent.hdf5".split())
+            cli.main(f"apply {self.config_file} nonexistent.hdf5".split())
 
     def test_apply_creates_predictions(self):
-        genomatnn.main(f"apply {self.config_file} {self.nn_hdf5_file}".split())
+        cli.main(f"apply {self.config_file} {self.nn_hdf5_file}".split())
         plot_dir = pathlib.Path(self.nn_hdf5_file[: -len(".hdf5")])
         for pred_file in [
             "predictions.txt",
@@ -186,11 +188,9 @@ class TestVcfplot(ConfigMixin, unittest.TestCase):
     def test_missing_config_file(self):
         plot_file = pathlib.Path(self.temp_dir.name) / "plot.pdf"
         with self.assertRaises(FileNotFoundError):
-            genomatnn.main(
-                f"vcfplot nonexistent.toml {plot_file} {self.region}".split()
-            )
+            cli.main(f"vcfplot nonexistent.toml {plot_file} {self.region}".split())
 
     def test_vcfplot_creates_plot(self):
         plot_file = pathlib.Path(self.temp_dir.name) / "plot.pdf"
-        genomatnn.main(f"vcfplot {self.config_file} {plot_file} {self.region}".split())
+        cli.main(f"vcfplot {self.config_file} {plot_file} {self.region}".split())
         self.assertTrue(plot_file.exists())

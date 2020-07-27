@@ -2,7 +2,7 @@ import unittest
 
 import numpy as np
 
-import calibrate
+from genomatnn import calibrate
 
 
 class TestUpsample(unittest.TestCase):

@@ -8,9 +8,11 @@ import itertools
 import numpy as np
 import toml
 
-import sim
-import vcf
-import calibrate
+from genomatnn import (
+    sim,
+    vcf,
+    calibrate,
+)
 
 
 class _CLIFormatter(logging.Formatter):

@@ -4,8 +4,10 @@ import tempfile
 import numpy as np
 import tensorflow as tf
 
-import convert
-import tfstuff
+from genomatnn import (
+    convert,
+    tfstuff,
+)
 import tests
 
 

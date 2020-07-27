@@ -9,7 +9,7 @@ import numpy as np
 import zarr
 import tskit
 
-import provenance
+from genomatnn import provenance
 
 logger = logging.getLogger(__name__)
 
@@ -156,7 +156,7 @@ def ts_genotype_matrix(
             f"but expected {num_cols}"
         )
     B = reorder_and_sort(A, ts_counts, ts_pop_indices, pop_indices, ref_pop)
-    params = provenance.load_parameters(ts, "genomatnn")
+    params = provenance.load_parameters(ts)
     # TODO remove the s/4G19/4G20/ renaming
     params["modelspec"] = params["modelspec"].replace(
         "HomininComposite_4G19", "HomininComposite_4G20"

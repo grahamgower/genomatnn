@@ -3,8 +3,10 @@ import unittest
 import msprime
 import stdpopsim
 
-import contact
-import sim
+from genomatnn import (
+    contact,
+    sim,
+)
 
 
 def _5pop_test_demog(N=1000):

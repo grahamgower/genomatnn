@@ -4,7 +4,7 @@ Test-agnostic functions and classes that simplify testing.
 import functools
 import logging
 
-import sim
+from genomatnn import sim
 
 logging.disable(logging.CRITICAL)
 

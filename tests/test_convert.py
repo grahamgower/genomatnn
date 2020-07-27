@@ -7,8 +7,10 @@ import itertools
 import numpy as np
 import stdpopsim
 
-import vcf
-import convert
+from genomatnn import (
+    vcf,
+    convert,
+)
 import tests
 
 

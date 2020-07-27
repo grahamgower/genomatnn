@@ -12,16 +12,15 @@ import pathlib
 
 import numpy as np
 
-import config
-import convert
-import calibrate
-import sim
-import vcf
-import plots
+from genomatnn import (
+    config,
+    convert,
+    calibrate,
+    sim,
+    vcf,
+    plots,
+)
 
-
-_module_name = "genomatnn"
-__version__ = "0.1"
 
 logger = logging.getLogger(__name__)
 
@@ -84,7 +83,7 @@ def do_train(conf):
         parallelism,
         conf.maf_threshold,
         cache,
-        conf.get("train.train_frac", 0.9)
+        conf.get("train.train_frac", 0.9),
     )
     train_data, train_labels, _, val_data, val_labels, _ = data
     n_train = train_data.shape[0]
@@ -96,7 +95,7 @@ def do_train(conf):
     if conf.convert_only:
         return
 
-    import tfstuff
+    from genomatnn import tfstuff
 
     conf.nn_hdf5_file = str(conf.dir / f"{conf.nn_model}_{conf.seed}.hdf5")
     tfstuff.train(conf, train_data, train_labels, val_data, val_labels)
@@ -142,7 +141,7 @@ def do_eval(conf):
     plot_dir.mkdir(parents=True, exist_ok=True)
 
     logger.debug("Applying tensorflow to validation data...")
-    import tfstuff
+    from genomatnn import tfstuff
     import tensorflow as tf
     from tensorflow.keras import models
 
@@ -324,7 +323,7 @@ def get_predictions(conf, pred_file):
     )
 
     logger.debug("Applying tensorflow to vcf data...")
-    import tfstuff
+    from genomatnn import tfstuff
     import tensorflow as tf
     from tensorflow.keras import models
 
