@@ -33,8 +33,9 @@ jobs:
         restore-keys: |
           ${{ runner.os }}-pip-
           ${{ runner.os }}-
-    - name: Install python dependencies
+    - name: Install dependencies
       run: |
+        sudo apt install libgsl-dev
         python -m pip install --upgrade pip setuptools wheel
         pip install flake8 nose
         pip install -r requirements.txt
