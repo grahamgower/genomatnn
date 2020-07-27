@@ -7,6 +7,8 @@ import sys
 import contextlib
 import shutil
 
+import toml
+
 import genomatnn
 import config
 import sim
@@ -24,86 +26,33 @@ def capture(func, *args, **kwargs):
         sys.stderr = saved_stderr
 
 
-def build_config(path):
-    path = pathlib.Path(path)
-    vcf_file = path / "test.vcf"
-    config_file = path / "config.toml"
-    with open(vcf_file, "w") as f:
-        print(
-            """\
-##fileformat=VCFv4.1
-##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">
-##contig=<ID=1,length=249250621,assembly=b37>
-##reference=file:///path/to/human_g1k_v37.fasta
-#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO	FORMAT	ind0	ind1	ind2	ind3
-1	12345	.	A	T	.	.	.	GT	 0|0	0|0	0|0	0|0""",
-            file=f,
-        )
-    with open(config_file, "w") as f:
-        print(
-            f"""\
-dir = "{str(path)}"
-ref_pop = "CEU"
-maf_threshold = 0.05
-
-[sim]
-sequence_length = 100_000
-min_allele_frequency = 0.01
-
-[sim.tranche]
-trancheA = [
-    "HomSap/HomininComposite_4G20/Neutral/slim",
-    "HomSap/HomininComposite_4G20/Sweep/CEU",
-]
-trancheB = [
-    "HomSap/HomininComposite_4G20/AI/Nea_to_CEU",
-]
-
-[vcf]
-chr = [ 1 ]
-file = "{str(vcf_file)}"
-
-[pop]
-CEU = [ "ind0", "ind3" ]
-YRI = [ "ind1", "ind2" ]
-
-[train]
-train_frac = 0.5
-num_rows = 32
-epochs = 1
-batch_size = 128
-model = "cnn"
-
-[train.cnn]
-n_conv = 7
-n_conv_filt = 16
-filt_size_x = 4
-filt_size_y = 4
-n_dense = 0
-dense_size = 0
-
-[apply]
-batch_size = 256
-step = 20_000
-max_missing_genotypes = 0.1
-min_seg_sites = 20
-""",
-            file=f,
-        )
-    return vcf_file, config_file
-
-
 class ConfigMixin:
+    need_sim_data = False
+    need_trained_model = False
+
     @classmethod
     def setUpClass(cls):
         cls.temp_dir = tempfile.TemporaryDirectory()
-        cls.vcf_file, cls.config_file = build_config(cls.temp_dir.name)
+        cls.config_file = pathlib.Path(cls.temp_dir.name) / "config.toml"
+        # load the example toml, patch in temp_dir, and write it back out
+        d = toml.load("examples/test-example.toml")
+        d["dir"] = cls.temp_dir.name
+        with open(cls.config_file, "w") as f:
+            toml.dump(d, f)
         cls.conf = config.Config(cls.config_file)
+
+        if cls.need_sim_data:
+            with mock.patch("sim._models", new=sim__models()):
+                genomatnn.main(f"sim -n 10 --seed 1 {cls.config_file}".split())
+                if cls.need_trained_model:
+                    genomatnn.main(f"train --seed 1 {cls.config_file}".split())
+                    models = list(cls.conf.dir.glob("*.hdf5"))
+                    assert len(models) == 1
+                    cls.nn_hdf5_file = str(models[0])
 
     @classmethod
     def tearDownClass(cls):
         del cls.temp_dir
-        cls.vcf_file = None
         cls.config_file = None
 
 
@@ -111,7 +60,7 @@ def sim__models(
     modelspec="HomSap/HomininComposite_4G20/Neutral/msprime", models=sim._models()
 ):
     """
-    Return a function to replace sim._models(), which always returns a
+    Return a function to replace sim._models(). The replacement always returns a
     model_func and sim_func corresponding to the provided modelspec.
     """
     model_func, sim_func = models[modelspec]
@@ -147,11 +96,7 @@ class TestSim(ConfigMixin, unittest.TestCase):
 
 
 class TestTrain(ConfigMixin, unittest.TestCase):
-    @classmethod
-    def setUpClass(cls):
-        super().setUpClass()
-        with mock.patch("sim._models", new=sim__models()):
-            genomatnn.main(f"sim -n 10 --seed 1 {cls.config_file}".split())
+    need_sim_data = True
 
     def tearDown(self):
         for path in self.conf.dir.glob("*.hdf5"):
@@ -187,19 +132,16 @@ class TestTrain(ConfigMixin, unittest.TestCase):
 
 
 class TestEval(ConfigMixin, unittest.TestCase):
-    @classmethod
-    def setUpClass(cls):
-        super().setUpClass()
-        with mock.patch("sim._models", new=sim__models()):
-            genomatnn.main(f"sim -n 10 --seed 1 {cls.config_file}".split())
-            genomatnn.main(f"train --seed 1 {cls.config_file}".split())
-        models = list(cls.conf.dir.glob("*.hdf5"))
-        assert len(models) == 1
-        cls.nn_hdf5_file = str(models[0])
+    need_sim_data = True
+    need_trained_model = True
 
     def test_missing_config_file(self):
         with self.assertRaises(FileNotFoundError):
             genomatnn.main(f"eval nonexistent.toml {self.nn_hdf5_file}".split())
+
+    def test_missing_nn_hdf5_file(self):
+        with self.assertRaises((FileNotFoundError, IOError)):
+            genomatnn.main(f"eval {self.config_file} nonexistent.hdf5".split())
 
     def test_eval_creates_plots(self):
         genomatnn.main(f"eval {self.config_file} {self.nn_hdf5_file}".split())
@@ -214,9 +156,41 @@ class TestEval(ConfigMixin, unittest.TestCase):
             self.assertTrue((plot_dir / plot_file).exists())
 
 
-class TestApply(unittest.TestCase):
-    pass
+class TestApply(ConfigMixin, unittest.TestCase):
+    need_sim_data = True
+    need_trained_model = True
+
+    def test_missing_config_file(self):
+        with self.assertRaises(FileNotFoundError):
+            genomatnn.main(f"apply nonexistent.toml {self.nn_hdf5_file}".split())
+
+    def test_missing_nn_hdf5_file(self):
+        with self.assertRaises((FileNotFoundError, IOError)):
+            genomatnn.main(f"apply {self.config_file} nonexistent.hdf5".split())
+
+    def test_apply_creates_predictions(self):
+        genomatnn.main(f"apply {self.config_file} {self.nn_hdf5_file}".split())
+        plot_dir = pathlib.Path(self.nn_hdf5_file[: -len(".hdf5")])
+        for pred_file in [
+            "predictions.txt",
+            "predictions.pdf",
+        ]:
+            self.assertTrue((plot_dir / pred_file).exists())
 
 
-class TestVcfplot(unittest.TestCase):
-    pass
+class TestVcfplot(ConfigMixin, unittest.TestCase):
+    need_sim_data = True
+    need_trained_model = True
+    region = "22:21000000-21100000"
+
+    def test_missing_config_file(self):
+        plot_file = pathlib.Path(self.temp_dir.name) / "plot.pdf"
+        with self.assertRaises(FileNotFoundError):
+            genomatnn.main(
+                f"vcfplot nonexistent.toml {plot_file} {self.region}".split()
+            )
+
+    def test_vcfplot_creates_plot(self):
+        plot_file = pathlib.Path(self.temp_dir.name) / "plot.pdf"
+        genomatnn.main(f"vcfplot {self.config_file} {plot_file} {self.region}".split())
+        self.assertTrue(plot_file.exists())

@@ -1,0 +1,102 @@
+# Working directory, for simulation output, trained networks, plots, etc.
+dir = "test-example"
+# Reference population. Must be one of the defined populations below.
+ref_pop = "Nea"
+
+# Minor Allele Frequency (MAF) threshold. 
+# Both training data and empirical data will be filtered to exclude
+# sites with MAF < maf_threshold.
+maf_threshold = 0.05
+
+[sim]
+sequence_length = 100_000  # 100 kb
+# For selection simulations (sweep or AI), condition on the final allele
+# frequency of the selected mutation being greater than this in the recipient
+# population.
+min_allele_frequency = 0.01
+
+[sim.tranche]
+# The labels and modelspec(s) for each tranche. The network will be trained to
+# classify data as coming from one of these tranches. Each tranche consists of
+# a list of simulation modelspecs.
+# Only two tranches are supported.
+"not AI" = [
+	"HomSap/HomininComposite_4G20/Neutral/slim",
+	"HomSap/HomininComposite_4G20/Sweep/CEU",
+    # conditioned on Nea haplotype presence in CEU
+    # "HomSap/HomininComposite_4G20/Neutral/Nea_to_CEU",
+
+
+	# Skip this for now, as it's too compuatationally intensive
+	# to do many replicates for training. :-(
+	#"HomSap/HomininComposite_4G20/DFE",
+]
+
+AI = [
+	"HomSap/HomininComposite_4G20/AI/Nea_to_CEU",
+]
+
+[sim.extra]
+# Additional modelspecs against which the trained model will be evaluated.
+#DFE = ["HomSap/HomininComposite_4G20/DFE"]
+#Admixed = ["HomSap/HomininComposite_4G20/Neutral/Nea_to_CEU"]
+
+[calibrate.weights]
+"HomSap/HomininComposite_4G20/Neutral/slim" = 1
+"HomSap/HomininComposite_4G20/Sweep/CEU" = 1
+"HomSap/HomininComposite_4G20/AI/Nea_to_CEU" = 0.01
+
+[vcf]
+# Path to the (indexed) vcf or bcf file(s). This is used to determine sample
+# phasing, and is the data to which the trained network will be applied.
+
+#file = "/path/to/vcf/all_chromosomes_in_one_file.vcf.gz"
+
+# VCFs are often split by chromosome. If this is the case, a list of
+# chromosomes may be provided here, and the ${chr} string in the filename
+# will be substituted for the chromosome number when applying the trained
+# network. Chromosomes may be specified as integers or strings.
+# Only the first vcf will be used to determining phasing.
+# Only diploid autosomes are supported.
+#chr = [ 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19,
+#	20, 21, 22 ]
+chr = [ 22 ]
+file = "examples/HGDP.1000g.archaic.${chr}.1mb.vcf.gz"
+
+[pop]
+# For each population, specify the individual IDs in the vcf. This can either
+# be a list of IDs, or the name of a file containing the IDs (one per line).
+# The population names must match those used for the simulations.
+# The order of populations given here will be used for the ordering in the
+# genotype matrices. It's recommended for the source and recipient populations
+# to be adjacent in the genotype matrices.
+Nea = ["AltaiNeandertal", "Vindija33.19"]
+CEU = "misc/CEU.indlist"
+YRI = "misc/YRI.indlist"
+
+[train]
+train_frac = 0.5
+num_rows = 32
+epochs = 1
+batch_size = 64
+model = "cnn"
+
+[train.cnn]
+n_conv = 3
+n_conv_filt = 16
+filt_size_x = 4  # spanning across 'sites'
+filt_size_y = 4  # spanning across individuals
+n_dense = 0
+dense_size = 0
+
+[apply]
+batch_size = 256
+# The trained model is applied to windows of the vcf of the same size
+# as the sequence_length above. Windows are chosen by moving along a
+# chromosome by the `step` size defined here. For non-overlapping windows,
+# set to the same value as the sequence_length.
+step = 20_000  # 20 kb
+# Exclude sites with more genotypes missing than this proportion.
+max_missing_genotypes = 0.1
+# Exclude windows with fewer segregating sites than this.
+min_seg_sites = 20
