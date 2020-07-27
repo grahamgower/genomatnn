@@ -1,8 +1,8 @@
-attr
+attrs>=19.1.0
 msprime
-stdpopsim
+stdpopsim @ git+https://github.com/grahamgower/stdpopsim.git@selection
 zarr
 toml
-tensorflow
+tensorflow>=2.2.0
 matplotlib
 sklearn
