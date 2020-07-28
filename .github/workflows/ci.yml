@@ -1,0 +1,80 @@
+# This workflow will install Python dependencies, run lint and nose tests.
+# https://help.github.com/actions/language-and-framework-guides/using-python-with-github-actions
+
+name: continuous integration
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: [3.6, 3.8]
+    timeout-minutes: 15
+    env:
+      SLIM_VERSION: 3.4
+
+    steps:
+    - uses: actions/checkout@v2
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v2
+      with:
+        python-version: ${{ matrix.python-version }}
+    - name: Install apt dependencies
+      run: |
+        sudo apt install libgsl-dev bcftools tabix
+    - name: Add ~/bin to PATH
+      run: |
+        # WARNING: this breaks if a tilde is used instead of $HOME!
+        echo "::add-path::$HOME/bin"
+    - name: Cache slim
+      id: cache-slim
+      uses: actions/cache@v2
+      with:
+        path: ~/bin/slim
+        key: ${{ runner.os }}-slim-${{ env.SLIM_VERSION }}
+    - name: Build SLiM
+      if: steps.cache-slim.outputs.cache-hit != 'true'
+      run: |
+        cd /tmp
+        wget https://github.com/MesserLab/SLiM/archive/v${SLIM_VERSION}.tar.gz
+        tar xf v${SLIM_VERSION}.tar.gz
+        cd SLiM-${SLIM_VERSION}
+        mkdir build && cd build && cmake .. && make -j 2
+        mkdir -p ~/bin
+        cp slim ~/bin/
+    - name: Cache pip
+      id: cache-pip
+      uses: actions/cache@v2
+      with:
+        # This path is specific to Ubuntu
+        path: ~/.cache/pip
+        # Look to see if there is a cache hit for the corresponding requirements file
+        key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+          ${{ runner.os }}-
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip setuptools wheel
+        # We're running tensorflow in cpu mode here, and the tensorflow-cpu
+        # package is much smaller, so we install that separately.
+        pip install tensorflow-cpu
+        pip install -r requirements.txt
+        pip install flake8 nose
+    - name: Lint with flake8
+      run: |
+        # stop the build if there are Python syntax errors or undefined names
+        flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+        # exit-zero treats all errors as warnings.
+        flake8 . --count --exit-zero --max-complexity=10 --max-line-length=89 --statistics
+    - name: Test with nose
+      run: |
+        nosetests -v tests
+
