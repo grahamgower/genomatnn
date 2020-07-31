@@ -804,7 +804,7 @@ def vcf_hap_matrix(
     def flatten_batches():
         for coords_list, vcf_data in vcf_batch_gen:
             for coords, A in zip(coords_list, vcf_data):
-                _, chrom, start, end = coords
+                chrom, start, end = coords
                 title = f"{chrom}:{start}$-${end}"
                 yield A[..., 0], title
 

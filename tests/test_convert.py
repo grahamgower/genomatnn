@@ -168,18 +168,16 @@ class TestGenotypeMatrixes(unittest.TestCase):
                 subprocess.run(["bgzip", vcf_file])
                 vcf_file += ".gz"
                 subprocess.run(["bcftools", "index", vcf_file])
-                chrom = "1"
-                start = 1
-                end = int(ts.sequence_length)
-                vcf_pos, V = vcf.vcf2mat(
-                    vcf_file,
-                    samples_file,
-                    chrom,
-                    start,
-                    end,
-                    rng,
-                    maf_thres=maf_thres,
-                    unphase=False,
+                winsize = int(ts.sequence_length)
+                _, _, _, V, vcf_pos = next(
+                    vcf.accumulate_matrices(
+                        vcf_file,
+                        winsize=winsize,
+                        winstep=winsize,
+                        samples_file=samples_file,
+                        maf_thres=maf_thres,
+                        rng=rng,
+                    )
                 )
             np.testing.assert_array_equal(vcf_pos, np.round(positions))
             for num_rows in (32, 64, 128):
@@ -187,7 +185,7 @@ class TestGenotypeMatrixes(unittest.TestCase):
                 self.assertEqual(A.shape, (num_rows, num_haplotypes))
                 # Use the float `positions` vector to resize here, not the integer
                 # `vcf_pos` vector, to ensure resizing equivalence.
-                B = vcf.resize(positions, V, end, num_rows)
+                B = vcf.resize(positions, V, winsize, num_rows)
                 self.assertEqual(A.shape, B.shape)
                 self.assertEqual(A.dtype, B.dtype)
                 np.testing.assert_array_equal(A, B)

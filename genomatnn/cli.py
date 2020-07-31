@@ -213,114 +213,9 @@ def do_eval(conf):
     plots.reliability(conf, val_labels[val_upidx], preds, reliability_pdf)
 
 
-def vcf_get1(
-    args,
-    samples_file=None,
-    sequence_length=None,
-    num_rows=None,
-    min_seg_sites=None,
-    max_missing=None,
-    maf_thres=None,
-    counts=None,
-    indices=None,
-    ref_pop=None,
-):
-    (vcf_file, chrom, start, end), seed = args
-    rng = random.Random(seed)
-    pos, A = vcf.vcf2mat(
-        vcf_file,
-        samples_file,
-        chrom,
-        start,
-        end,
-        rng,
-        max_missing_thres=max_missing,
-        maf_thres=maf_thres,
-    )
-    if len(pos) < min_seg_sites:
-        return None
-    relative_pos = pos - start
-    A = vcf.resize(relative_pos, A, sequence_length, num_rows)
-    A_sorted = convert.reorder_and_sort(A, counts, indices, indices, ref_pop)
-    return A_sorted[np.newaxis, :, :, np.newaxis]
-
-
-def vcf_batch_generator(
-    coordinates,
-    sample_list,
-    min_seg_sites,
-    max_missing,
-    maf_thres,
-    sequence_length,
-    num_rows,
-    rng,
-    parallelism,
-    batch_size,
-    counts,
-    indices,
-    ref_pop,
-):
-    icoordinates = iter(coordinates)
-    with tempfile.TemporaryDirectory() as tmpdir:
-        samples_file = f"{tmpdir}/samples.txt"
-        with open(samples_file, "w") as f:
-            print(*sample_list, file=f, sep="\n")
-
-        vcf_get_func = functools.partial(
-            vcf_get1,
-            samples_file=samples_file,
-            sequence_length=sequence_length,
-            num_rows=num_rows,
-            min_seg_sites=min_seg_sites,
-            max_missing=max_missing,
-            maf_thres=maf_thres,
-            counts=counts,
-            indices=indices,
-            ref_pop=ref_pop,
-        )
-
-        with concurrent.futures.ProcessPoolExecutor(parallelism) as ex:
-            while True:
-                batch_coords = list(itertools.islice(icoordinates, batch_size))
-                if len(batch_coords) == 0:
-                    break
-                seeds = [rng.randrange(1, 2 ** 32) for _ in batch_coords]
-                pred_coords = []
-                B = []
-                map_res = ex.map(vcf_get_func, zip(batch_coords, seeds))
-                for coords, A in zip(batch_coords, map_res):
-                    if A is None:
-                        continue
-                    pred_coords.append(coords)
-                    B.append(A)
-                if len(pred_coords) > 0:
-                    yield pred_coords, np.concatenate(B)
-
-
-def get_predictions(conf, pred_file):
-    # XXX: each part of the input vcf is loaded window/step times.
+def get_predictions(conf, pred_file, samples_file):
     rng = random.Random(conf.seed)
-    logger.debug("Generating window coordinates for vcf data...")
-    coordinates = vcf.coordinates(
-        conf.file, conf.chr, conf.sequence_length, conf.apply["step"]
-    )
-    logger.debug("Setting up data generator...")
     parallelism = conf.parallelism if conf.parallelism > 0 else os.cpu_count()
-    vcf_batch_gen = vcf_batch_generator(
-        coordinates,
-        conf.vcf_samples,
-        conf.apply["min_seg_sites"],
-        conf.apply["max_missing_genotypes"],
-        conf.maf_threshold,
-        conf.sequence_length,
-        conf.num_rows,
-        rng,
-        parallelism,
-        conf.apply["batch_size"],
-        conf.sample_counts(),
-        conf.pop_indices(),
-        conf.ref_pop,
-    )
 
     logger.debug("Applying tensorflow to vcf data...")
     from genomatnn import tfstuff
@@ -343,6 +238,24 @@ def get_predictions(conf, pred_file):
         train_pred = train_pred[:, 0]
         cal = calibrate.calibrate(conf, train_labels, train_metadata, train_pred)
 
+    logger.debug("Setting up data generator...")
+    vcf_batch_gen = vcf.matrix_batches(
+        conf.file,
+        conf.chr,
+        winsize=conf.sequence_length,
+        winstep=conf.apply["step"],
+        num_rows=conf.num_rows,
+        counts=conf.sample_counts(),
+        indices=conf.pop_indices(),
+        ref_pop=conf.ref_pop,
+        samples_file=samples_file,
+        min_seg_sites=conf.apply["min_seg_sites"],
+        max_missing_thres=conf.apply["max_missing_genotypes"],
+        maf_thres=conf.maf_threshold,
+        parallelism=parallelism,
+        rng=rng,
+    )
+
     label = list(conf.tranche.keys())[1]
     with open(pred_file, "w") as f:
         print("chrom", "start", "end", f"Pr{{{label}}}", sep="\t", file=f)
@@ -352,7 +265,7 @@ def get_predictions(conf, pred_file):
                 if conf.calibration is not None:
                     # Calibrate the model predictions.
                     predictions = cal.predict(predictions)
-                for (_, chrom, start, end), pred in zip(coords, predictions):
+                for (chrom, start, end), pred in zip(coords, predictions):
                     printable_pred = [format(p, ".8f") for p in pred]
                     print(chrom, start, end, *printable_pred, sep="\t", file=f)
 
@@ -363,7 +276,11 @@ def do_apply(conf):
     pred_file = str(plot_dir / "predictions.txt")
     pdf_file = str(plot_dir / "predictions.pdf")
     if not conf.plot_only:
-        get_predictions(conf, pred_file)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            samples_file = f"{tmpdir}/samples.txt"
+            with open(samples_file, "w") as f:
+                print(*conf.vcf_samples, file=f, sep="\n")
+            get_predictions(conf, pred_file, samples_file)
     plots.predictions(conf, pred_file, pdf_file)
 
 
@@ -393,24 +310,32 @@ def do_vcfplot(conf):
     coordinates = [(chr_file[r[0]], *r) for r in regions]
 
     rng = random.Random(conf.seed)
-    logger.debug("Setting up data generator...")
     parallelism = conf.parallelism if conf.parallelism > 0 else os.cpu_count()
-    vcf_batch_gen = vcf_batch_generator(
-        coordinates,
-        conf.vcf_samples,
-        conf.apply["min_seg_sites"],
-        conf.apply["max_missing_genotypes"],
-        conf.maf_threshold,
-        conf.sequence_length,
-        conf.num_rows,
-        rng,
-        parallelism,
-        16,  # batch size
-        conf.sample_counts(),
-        conf.pop_indices(),
-        conf.ref_pop,
-    )
-    plots.vcf_hap_matrix(conf, vcf_batch_gen, conf.pdf_file)
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        samples_file = f"{tmpdir}/samples.txt"
+        with open(samples_file, "w") as f:
+            print(*conf.vcf_samples, file=f, sep="\n")
+
+        logger.debug("Setting up data generator...")
+        vcf_batch_gen = vcf.matrix_batches(
+            conf.file,
+            conf.chr,
+            coordinates=coordinates,
+            winsize=conf.sequence_length,
+            winstep=conf.apply["step"],
+            num_rows=conf.num_rows,
+            counts=conf.sample_counts(),
+            indices=conf.pop_indices(),
+            ref_pop=conf.ref_pop,
+            samples_file=samples_file,
+            min_seg_sites=conf.apply["min_seg_sites"],
+            max_missing_thres=conf.apply["max_missing_genotypes"],
+            maf_thres=conf.maf_threshold,
+            parallelism=parallelism,
+            rng=rng,
+        )
+        plots.vcf_hap_matrix(conf, vcf_batch_gen, conf.pdf_file)
 
 
 def parse_args(args_list):
