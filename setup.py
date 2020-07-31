@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-from setuptools import setup
+from cysetuptools import setup
 
 setup(
     use_scm_version={"write_to": "genomatnn/_version.py"},

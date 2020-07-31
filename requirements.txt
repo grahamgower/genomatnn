@@ -6,3 +6,4 @@ toml
 tensorflow>=2.2.0
 matplotlib
 sklearn
+cython

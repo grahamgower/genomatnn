@@ -1,1 +1,5 @@
-HomSap
+__pycache__
+build/
+*.so
+.coverage
+_version.py

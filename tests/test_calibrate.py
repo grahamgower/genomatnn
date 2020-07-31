@@ -36,4 +36,3 @@ class TestUpsample(unittest.TestCase):
             np.testing.assert_array_equal(np.unique(a), unique)
             w = np.array([weights[u] for u in unique])
             np.testing.assert_almost_equal(w / w.sum(), counts / counts.sum())
-            print(weights, counts)
