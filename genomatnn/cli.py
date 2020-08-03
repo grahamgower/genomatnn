@@ -72,6 +72,15 @@ def do_train(conf):
     ref_pop = conf.pop2tsidx[conf.ref_pop]
     pop_indices = {conf.pop2tsidx[pop]: idx for pop, idx in conf.pop_indices().items()}
     parallelism = conf.parallelism if conf.parallelism > 0 else os.cpu_count()
+    af_filter = conf.get("train.af_filter")
+    if af_filter is not None:
+        filter_pop = conf.pop2tsidx[af_filter["pop"]]
+        filter_modelspec = af_filter["modelspec"]
+        filter_AF = af_filter["AF"]
+    else:
+        filter_pop = None
+        filter_modelspec = None
+        filter_AF = 0
     data = convert.prepare_training_data(
         conf.dir,
         conf.tranche,
@@ -84,6 +93,9 @@ def do_train(conf):
         conf.maf_threshold,
         cache,
         conf.get("train.train_frac", 0.9),
+        filter_pop,
+        filter_modelspec,
+        filter_AF,
     )
     train_data, train_labels, _, val_data, val_labels, _ = data
     n_train = train_data.shape[0]

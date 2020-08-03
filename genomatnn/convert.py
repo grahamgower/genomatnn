@@ -366,6 +366,9 @@ def prepare_training_data(
     maf_thres,
     cache,
     train_frac,
+    filter_pop,
+    filter_modelspec,
+    filter_AF,
 ):
     """
     Wrapper for _prepare_training_data() that maintains an on-disk zarr cache.
@@ -386,6 +389,8 @@ def prepare_training_data(
             maf_thres,
             train_frac,
         )
+        if filter_pop is not None and filter_modelspec is not None:
+            data = filter_by_af(data, filter_pop, filter_modelspec, filter_AF)
         save_data_cache(cache, data)
     check_data(data, tranche, num_rows, num_cols)
     return data
@@ -426,4 +431,42 @@ def prepare_extra(
         save_data_cache(cache, data, cache_keys=cache_keys)
     # TODO fix check_data to work with n_tranches != 2
     # check_data(data, tranche, num_rows, num_cols)
+    return data
+
+
+def filter_by_af(data, pop, modelspec, af):
+    def _filt(data, labels, metadata, pop, af):
+        idx = np.where(
+            np.bitwise_or(
+                np.char.find(metadata["modelspec"], modelspec) == -1,
+                metadata["AF"][:, pop] >= af,
+            )
+        )
+        data = data[idx]
+        labels = labels[idx]
+        metadata = metadata[idx]
+        return data, labels, metadata
+
+    (
+        train_data,
+        train_labels,
+        train_metadata,
+        val_data,
+        val_labels,
+        val_metadata,
+    ) = data
+    train_data, train_labels, train_metadata = _filt(
+        train_data, train_labels, train_metadata, pop, af
+    )
+    val_data, val_labels, val_metadata = _filt(
+        val_data, val_labels, val_metadata, pop, af
+    )
+    data = (
+        train_data,
+        train_labels,
+        train_metadata,
+        val_data,
+        val_labels,
+        val_metadata,
+    )
     return data

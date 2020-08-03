@@ -81,6 +81,11 @@ epochs = 1
 batch_size = 64
 model = "cnn"
 
+[train.af_filter]
+pop = "CEU"
+modelspec = "HomSap/HomininComposite_4G20/AI/Nea_to_CEU"
+AF = 0
+
 [train.cnn]
 n_conv = 3
 n_conv_filt = 16
