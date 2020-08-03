@@ -114,16 +114,15 @@ def ts2mat(
         if skip_variant:
             continue
 
-        allele_counts = collections.Counter(genotypes)
+        ac1 = np.sum(genotypes)
+        ac0 = len(genotypes) - ac1
 
-        if allele_counts[0] < ac_thres or allele_counts[1] < ac_thres:
+        if min(ac0, ac1) < ac_thres:
             continue
         # Polarise 0 and 1 in genotype matrix by major allele frequency.
         # If allele counts are the same, randomly choose a major allele.
-        if allele_counts[1] > allele_counts[0] or (
-            allele_counts[1] == allele_counts[0] and rng.random() > 0.5
-        ):
-            genotypes = genotypes ^ 1
+        if ac1 > ac0 or (ac1 == ac0 and rng.random() > 0.5):
+            genotypes ^= 1
         j = int(num_rows * variant.site.position / sequence_length)
         A[j, :] += genotypes
     return A, af
