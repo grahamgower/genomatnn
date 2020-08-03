@@ -29,8 +29,8 @@ def _sim_wrapper(args, conf=None):
     modelspec, seed = args
     ts = sim.sim(
         modelspec,
-        conf.sequence_length,
-        conf.min_allele_frequency,
+        sequence_length=conf.sequence_length,
+        min_allele_frequency=conf.min_allele_frequency,
         seed=seed,
         sample_counts=conf.sample_counts(),
     )
@@ -82,20 +82,20 @@ def do_train(conf):
         filter_modelspec = None
         filter_AF = 0
     data = convert.prepare_training_data(
-        conf.dir,
-        conf.tranche,
-        pop_indices,
-        ref_pop,
-        conf.num_rows,
-        conf.num_cols,
-        rng,
-        parallelism,
-        conf.maf_threshold,
-        cache,
-        conf.get("train.train_frac", 0.9),
-        filter_pop,
-        filter_modelspec,
-        filter_AF,
+        path=conf.dir,
+        tranche=conf.tranche,
+        pop_indices=pop_indices,
+        ref_pop=ref_pop,
+        num_rows=conf.num_rows,
+        num_cols=conf.num_cols,
+        rng=rng,
+        parallelism=parallelism,
+        maf_thres=conf.maf_threshold,
+        cache=cache,
+        train_frac=conf.get("train.train_frac", 0.9),
+        filter_pop=filter_pop,
+        filter_modelspec=filter_modelspec,
+        filter_AF=filter_AF,
     )
     train_data, train_labels, _, val_data, val_labels, _ = data
     n_train = train_data.shape[0]
@@ -133,16 +133,16 @@ def do_eval(conf):
         }
         parallelism = conf.parallelism if conf.parallelism > 0 else os.cpu_count()
         data = convert.prepare_extra(
-            conf.dir,
-            extra_sims,
-            pop_indices,
-            ref_pop,
-            conf.num_rows,
-            conf.num_cols,
-            rng,
-            parallelism,
-            conf.maf_threshold,
-            extra_cache,
+            path=conf.dir,
+            tranche=extra_sims,
+            pop_indices=pop_indices,
+            ref_pop=ref_pop,
+            num_rows=conf.num_rows,
+            num_cols=conf.num_cols,
+            rng=rng,
+            parallelism=parallelism,
+            maf_thres=conf.maf_threshold,
+            cache=extra_cache,
         )
         extra_data, _, extra_metadata = data
         n = len(extra_data)
@@ -197,14 +197,14 @@ def do_eval(conf):
 
     roc_pdf = str(plot_dir / "roc.pdf")
     plots.roc(
-        conf,
-        val_labels[val_upidx],
-        val_pred_cal[val_upidx],
-        val_metadata[val_upidx],
-        extra_labels,
-        extra_pred_cal,
-        extra_metadata,
-        roc_pdf,
+        conf=conf,
+        labels=val_labels[val_upidx],
+        pred=val_pred_cal[val_upidx],
+        metadata=val_metadata[val_upidx],
+        extra_labels=extra_labels,
+        extra_pred=extra_pred_cal,
+        extra_metadata=extra_metadata,
+        pdf_file=roc_pdf,
     )
 
     accuracy_pdf = str(plot_dir / "accuracy.pdf")

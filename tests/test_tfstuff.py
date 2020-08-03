@@ -24,7 +24,13 @@ class TestModelConstruction(unittest.TestCase):
             ts_file = f"{tmpdir}/foo.trees"
             ts.dump(ts_file)
             A, _ = convert.ts_genotype_matrix(
-                ts_file, pop_indices, 0, num_rows, num_inds, maf_thres, rng
+                ts_file,
+                pop_indices=pop_indices,
+                ref_pop=0,
+                num_rows=num_rows,
+                num_cols=num_inds,
+                maf_thres=maf_thres,
+                rng=rng,
             )
         self.assertEqual(A.shape, (num_rows, num_inds))
         self.A = A[np.newaxis, :, :, np.newaxis]

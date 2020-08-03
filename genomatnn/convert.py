@@ -129,7 +129,7 @@ def ts2mat(
 
 
 def ts_genotype_matrix(
-    ts_file, pop_indices, ref_pop, num_rows, num_cols, maf_thres, rng
+    ts_file, *, pop_indices, ref_pop, num_rows, num_cols, maf_thres, rng
 ):
     """
     Return a genotype matrix from ``ts``, shrunk to ``num_rows``,
@@ -166,6 +166,7 @@ def ts_genotype_matrix(
 
 
 def _prepare_data(
+    *,
     path,
     tranche,
     pop_indices,
@@ -235,6 +236,7 @@ def _prepare_data(
 
 
 def _prepare_training_data(
+    *,
     path,
     tranche,
     pop_indices,
@@ -252,15 +254,15 @@ def _prepare_training_data(
     if len(tranche) < 2:
         raise RuntimeError("Must specify at least two tranches.")
     data, labels, metadata = _prepare_data(
-        path,
-        tranche,
-        pop_indices,
-        ref_pop,
-        num_rows,
-        num_cols,
-        rng,
-        parallelism,
-        maf_thres,
+        path=path,
+        tranche=tranche,
+        pop_indices=pop_indices,
+        ref_pop=ref_pop,
+        num_rows=num_rows,
+        num_cols=num_cols,
+        rng=rng,
+        parallelism=parallelism,
+        maf_thres=maf_thres,
     )
 
     n = len(data)
@@ -355,6 +357,7 @@ def save_data_cache(cache, data, cache_keys=_cache_keys):
 
 
 def prepare_training_data(
+    *,
     path,
     tranche,
     pop_indices,
@@ -378,16 +381,16 @@ def prepare_training_data(
     else:
         # Data are not cached, load them up.
         data = _prepare_training_data(
-            path,
-            tranche,
-            pop_indices,
-            ref_pop,
-            num_rows,
-            num_cols,
-            rng,
-            parallelism,
-            maf_thres,
-            train_frac,
+            path=path,
+            tranche=tranche,
+            pop_indices=pop_indices,
+            ref_pop=ref_pop,
+            num_rows=num_rows,
+            num_cols=num_cols,
+            rng=rng,
+            parallelism=parallelism,
+            maf_thres=maf_thres,
+            train_frac=train_frac,
         )
         if filter_pop is not None and filter_modelspec is not None:
             data = filter_by_af(data, filter_pop, filter_modelspec, filter_AF)
@@ -397,6 +400,7 @@ def prepare_training_data(
 
 
 def prepare_extra(
+    *,
     path,
     tranche,
     pop_indices,
@@ -418,15 +422,15 @@ def prepare_extra(
     else:
         # Data are not cached, load them up.
         data = _prepare_data(
-            path,
-            tranche,
-            pop_indices,
-            ref_pop,
-            num_rows,
-            num_cols,
-            rng,
-            parallelism,
-            maf_thres,
+            path=path,
+            tranche=tranche,
+            pop_indices=pop_indices,
+            ref_pop=ref_pop,
+            num_rows=num_rows,
+            num_cols=num_cols,
+            rng=rng,
+            parallelism=parallelism,
+            maf_thres=maf_thres,
         )
         save_data_cache(cache, data, cache_keys=cache_keys)
     # TODO fix check_data to work with n_tranches != 2

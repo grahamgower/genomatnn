@@ -1082,12 +1082,13 @@ def get_demog_model(modelspec, sequence_length=100000):
 
 def sim(
     modelspec,
+    *,
     sequence_length,
     min_allele_frequency,
+    sample_counts,
     seed=None,
     slim_script=False,
     command=None,
-    sample_counts=None,
 ):
     models = _models()
     for model, (model_func, sim_func) in models.items():
@@ -1095,8 +1096,6 @@ def sim(
             break
     else:
         raise ValueError(f"{modelspec} not found")
-
-    assert sample_counts is not None
 
     # Do simulation.
     species, model, contig, samples = model_func(sequence_length, sample_counts, seed)

@@ -22,10 +22,10 @@ def basic_sim(sample_counts, sequence_length=int(1e5), min_allele_frequency=0.05
     model = sim.get_demog_model(modelspec)
     ts = sim.sim(
         modelspec,
-        sequence_length,
-        min_allele_frequency,
-        seed=1234,
         sample_counts=sample_counts,
+        sequence_length=sequence_length,
+        min_allele_frequency=min_allele_frequency,
+        seed=1234,
     )
     return ts, model
 
