@@ -1,5 +1,4 @@
 import subprocess
-import tempfile
 import functools
 import concurrent.futures
 
@@ -36,37 +35,6 @@ def bcftools_query(
 
     if stderr:
         raise RuntimeError(f"{vcf_file}: {stderr}")
-
-
-def sample_phasing(vcf, sample_list):
-    """
-    Determine if the genotypes in ``vcf`` are phased for the ``sample_list``.
-    """
-    phasing_unknown = set(range(len(sample_list)))
-    phasing = [True] * len(sample_list)
-
-    with tempfile.TemporaryDirectory() as tmpdir:
-        samples_file = f"{tmpdir}/samples.txt"
-        with open(samples_file, "w") as f:
-            print(*sample_list, file=f, sep="\n")
-
-        for line in bcftools_query("[%GT\t]\\n", vcf, samples_file=samples_file):
-            gts = line.split()
-            for i, gt_str in enumerate(gts):
-                if gt_str[0] == ".":
-                    # phasing unknown
-                    continue
-                if gt_str[1] == "/":
-                    phasing[i] = False
-                elif gt_str[1] == "|":
-                    phasing[i] = True
-                phasing_unknown.discard(i)
-            if len(phasing_unknown) == 0:
-                break
-
-    if len(phasing_unknown) > 0:
-        raise RuntimeError(f"{vcf}: couldn't determine phasing for all samples.")
-    return phasing
 
 
 def contig_lengths(vcf):
@@ -286,6 +254,8 @@ def _matrix_batch_1(
     min_seg_sites,
     max_missing_thres,
     maf_thres,
+    phased,
+    ploidy,
 ):
     (vcf, chrom, start, end), seed = args
     rng = np.random.default_rng(seed)
@@ -305,6 +275,8 @@ def _matrix_batch_1(
     ):
         relative_pos = np.array(gt_pos_list, dtype=int) - start
         A = resize(relative_pos, M, winsize, num_rows)
+        if not phased:
+            A = convert.collapse_unphased(A, ploidy)
         A = convert.reorder_and_sort(A, counts, indices, indices, ref_pop)
         A = A[np.newaxis, :, :, np.newaxis]
         coords.append((chrom, start, end))
@@ -325,6 +297,8 @@ def matrix_batches(
     counts,
     indices,
     ref_pop,
+    phased,
+    ploidy,
     # optional keyword args
     coordinates=None,
     samples_file=None,
@@ -374,6 +348,8 @@ def matrix_batches(
         min_seg_sites=min_seg_sites,
         max_missing_thres=max_missing_thres,
         maf_thres=maf_thres,
+        phased=phased,
+        ploidy=ploidy,
     )
 
     with concurrent.futures.ProcessPoolExecutor(parallelism) as ex:

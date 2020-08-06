@@ -31,14 +31,16 @@ def capture(func, *args, **kwargs):
 class ConfigMixin:
     need_sim_data = False
     need_trained_model = False
+    phased = False
 
     @classmethod
     def setUpClass(cls):
         cls.temp_dir = tempfile.TemporaryDirectory()
         cls.config_file = pathlib.Path(cls.temp_dir.name) / "config.toml"
-        # load the example toml, patch in temp_dir, and write it back out
+        # load the example toml, patch it, then write it back out
         d = toml.load("examples/test-example.toml")
         d["dir"] = cls.temp_dir.name
+        d["vcf"]["phased"] = cls.phased
         with open(cls.config_file, "w") as f:
             toml.dump(d, f)
         cls.conf = config.Config(cls.config_file)
@@ -158,6 +160,10 @@ class TestEval(ConfigMixin, unittest.TestCase):
             self.assertTrue((plot_dir / plot_file).exists())
 
 
+class TestEval_phased(TestEval):
+    phased = True
+
+
 class TestApply(ConfigMixin, unittest.TestCase):
     need_sim_data = True
     need_trained_model = True
@@ -178,6 +184,10 @@ class TestApply(ConfigMixin, unittest.TestCase):
             "predictions.pdf",
         ]:
             self.assertTrue((plot_dir / pred_file).exists())
+
+
+class TestApply_phased(TestApply):
+    phased = True
 
 
 class TestVcfplot(ConfigMixin, unittest.TestCase):

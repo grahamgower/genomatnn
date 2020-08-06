@@ -67,7 +67,7 @@ def reorder_and_sort(A, counts, from_, to, ref_pop):
 def ts_pop_counts_indices(ts):
     """
     Get the per-population sample counts, and indices that partition the
-    samples into populations.
+    samples into populations. Samples are haploid.
     """
     pops = [ts.get_population(sample) for sample in ts.samples()]
     # Ordering of items in collections.Counter() should match order added.
@@ -128,8 +128,30 @@ def ts2mat(
     return A, af
 
 
+def collapse_unphased(M, ploidy):
+    assert M.shape[1] % ploidy == 0
+    return np.sum([M[:, i::ploidy] for i in range(ploidy)], axis=0)
+    # This should generalise to collapse along the given ``axis``.
+    # assert M.shape[axis] % ploidy == 0
+    # return np.sum(
+    #    [
+    #        M[[slice(None), ] * axis + [slice(i, None, ploidy)]]
+    #        for i in range(ploidy)
+    #    ],
+    # axis=0)
+
+
 def ts_genotype_matrix(
-    ts_file, *, pop_indices, ref_pop, num_rows, num_cols, maf_thres, rng
+    ts_file,
+    *,
+    pop_indices,
+    ref_pop,
+    num_rows,
+    num_haplotypes,
+    maf_thres,
+    rng,
+    phased,
+    ploidy,
 ):
     """
     Return a genotype matrix from ``ts``, shrunk to ``num_rows``,
@@ -149,11 +171,16 @@ def ts_genotype_matrix(
         (j, j + n) for j, n in zip(ts_pop_indices.values(), ts_counts.values())
     ]
     A, af = ts2mat(ts, num_rows, maf_thres, rng, pop_intervals=pop_partition)
-    if sum(ts_counts.values()) != num_cols:
+    if sum(ts_counts.values()) != num_haplotypes:
         raise RuntimeError(
             f"{ts_file}: found {sum(ts_counts.values())} samples, "
-            f"but expected {num_cols}"
+            f"but expected {num_haplotypes}"
         )
+    if not phased:
+        A = collapse_unphased(A, ploidy)
+        for k in ts_counts.keys():
+            ts_counts[k] //= ploidy
+            ts_pop_indices[k] //= ploidy
     B = reorder_and_sort(A, ts_counts, ts_pop_indices, pop_indices, ref_pop)
     params = provenance.load_parameters(ts)
     # TODO remove the s/4G19/4G20/ renaming
@@ -173,9 +200,12 @@ def _prepare_data(
     ref_pop,
     num_rows,
     num_cols,
+    num_haplotypes,
     rng,
     parallelism,
     maf_thres,
+    phased,
+    ploidy,
 ):
     """
     Load and label the data.
@@ -212,9 +242,11 @@ def _prepare_data(
         pop_indices=pop_indices,
         ref_pop=ref_pop,
         num_rows=num_rows,
-        num_cols=num_cols,
+        num_haplotypes=num_haplotypes,
         maf_thres=maf_thres,
         rng=rng,
+        phased=phased,
+        ploidy=ploidy,
     )
 
     with concurrent.futures.ProcessPoolExecutor(parallelism) as ex:
@@ -243,10 +275,13 @@ def _prepare_training_data(
     ref_pop,
     num_rows,
     num_cols,
+    num_haplotypes,
     rng,
     parallelism,
     maf_thres,
     train_frac,
+    phased,
+    ploidy,
 ):
     """
     Load and label the data, then split into training and validation sets.
@@ -260,9 +295,12 @@ def _prepare_training_data(
         ref_pop=ref_pop,
         num_rows=num_rows,
         num_cols=num_cols,
+        num_haplotypes=num_haplotypes,
         rng=rng,
         parallelism=parallelism,
         maf_thres=maf_thres,
+        phased=phased,
+        ploidy=ploidy,
     )
 
     n = len(data)
@@ -364,11 +402,14 @@ def prepare_training_data(
     ref_pop,
     num_rows,
     num_cols,
+    num_haplotypes,
     rng,
     parallelism,
     maf_thres,
     cache,
     train_frac,
+    phased,
+    ploidy,
     filter_pop,
     filter_modelspec,
     filter_AF,
@@ -387,10 +428,13 @@ def prepare_training_data(
             ref_pop=ref_pop,
             num_rows=num_rows,
             num_cols=num_cols,
+            num_haplotypes=num_haplotypes,
             rng=rng,
             parallelism=parallelism,
             maf_thres=maf_thres,
             train_frac=train_frac,
+            phased=phased,
+            ploidy=ploidy,
         )
         if filter_pop is not None and filter_modelspec is not None:
             data = filter_by_af(data, filter_pop, filter_modelspec, filter_AF)
@@ -407,10 +451,13 @@ def prepare_extra(
     ref_pop,
     num_rows,
     num_cols,
+    num_haplotypes,
     rng,
     parallelism,
     maf_thres,
     cache,
+    phased,
+    ploidy,
 ):
     cache_keys = (
         "extra/data",
@@ -428,9 +475,12 @@ def prepare_extra(
             ref_pop=ref_pop,
             num_rows=num_rows,
             num_cols=num_cols,
+            num_haplotypes=num_haplotypes,
             rng=rng,
             parallelism=parallelism,
             maf_thres=maf_thres,
+            phased=phased,
+            ploidy=ploidy,
         )
         save_data_cache(cache, data, cache_keys=cache_keys)
     # TODO fix check_data to work with n_tranches != 2
