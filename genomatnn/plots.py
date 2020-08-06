@@ -649,10 +649,25 @@ def reliability(conf, labels, preds, pdf_file, aspect=10 / 16, scale=1.5, bins=1
 
 
 def hap_matrix1(
-    A, ax, title, sample_counts, pop_indices, sequence_length, aspect, cmap, rasterized
+    A,
+    ax,
+    title,
+    sample_counts,
+    pop_indices,
+    sequence_length,
+    aspect,
+    cmap,
+    rasterized,
+    phased,
+    ploidy,
 ):
+    """
+    Plot one haplotype (or genotype) matrix, with a bar at the bottom
+    indicating the population of origin for a given haplotype/genotype column.
+    """
     # vmax heuristic to make the patterns clear
-    vmax = int(round(np.log2(sequence_length / 20 / A.shape[0])))
+    x = ploidy if phased else 1
+    vmax = int(round(x * np.log2(sequence_length / 20 / A.shape[0])))
     im = ax.imshow(
         A,
         interpolation="none",
@@ -712,7 +727,10 @@ def hap_matrix1(
     ax_pops.set_yticklabels([])
     ax_pops.set_xticks(pop_ticks)
     ax_pops.set_xticklabels(list(pop_indices.keys()))
-    ax_pops.set_xlabel("Haplotypes")
+    if phased:
+        ax_pops.set_xlabel("Haplotypes")
+    else:
+        ax_pops.set_xlabel("Genotypes")
 
     ax.figure.tight_layout()
 
@@ -733,11 +751,12 @@ def hap_matrix(
     scale = conf.get("eval.genotype_matrices.plot.scale", scale)
     aspect = conf.get("eval.genotype_matrices.plot.aspect", aspect)
 
+    sample_counts = conf.sample_counts(haploid=conf.phased)
+    pop_indices = conf.pop_indices(haploid=conf.phased)
+
     pdf = PdfPages(pdf_file)
 
     for (A, title) in data_generator:
-        sample_counts = conf.sample_counts()
-        pop_indices = conf.pop_indices()
         fig_w, fig_h = plt.figaspect(aspect)
         fig, ax = plt.subplots(1, 1, figsize=(scale * fig_w, scale * fig_h))
         hap_matrix1(
@@ -750,6 +769,8 @@ def hap_matrix(
             aspect,
             cmap,
             rasterized,
+            conf.phased,
+            conf.ploidy,
         )
         pdf.savefig(figure=fig)
         plt.close(fig)

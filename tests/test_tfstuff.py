@@ -28,9 +28,11 @@ class TestModelConstruction(unittest.TestCase):
                 pop_indices=pop_indices,
                 ref_pop=0,
                 num_rows=num_rows,
-                num_cols=num_inds,
+                num_haplotypes=num_inds,
                 maf_thres=maf_thres,
                 rng=rng,
+                phased=True,
+                ploidy=2,
             )
         self.assertEqual(A.shape, (num_rows, num_inds))
         self.A = A[np.newaxis, :, :, np.newaxis]

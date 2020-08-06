@@ -32,7 +32,7 @@ def _sim_wrapper(args, conf=None):
         sequence_length=conf.sequence_length,
         min_allele_frequency=conf.min_allele_frequency,
         seed=seed,
-        sample_counts=conf.sample_counts(),
+        sample_counts=conf.sample_counts(haploid=True),
     )
     assert ts is not None
     odir = conf.dir / modelspec
@@ -70,7 +70,10 @@ def do_train(conf):
     cache = conf.dir / f"zarrcache_{conf.num_rows}-rows"
     # Translate ref_pop and pop_indices to tree sequence population indices.
     ref_pop = conf.pop2tsidx[conf.ref_pop]
-    pop_indices = {conf.pop2tsidx[pop]: idx for pop, idx in conf.pop_indices().items()}
+    pop_indices = {
+        conf.pop2tsidx[pop]: idx
+        for pop, idx in conf.pop_indices(haploid=conf.phased).items()
+    }
     parallelism = conf.parallelism if conf.parallelism > 0 else os.cpu_count()
     af_filter = conf.get("train.af_filter")
     if af_filter is not None:
@@ -88,11 +91,14 @@ def do_train(conf):
         ref_pop=ref_pop,
         num_rows=conf.num_rows,
         num_cols=conf.num_cols,
+        num_haplotypes=conf.num_haplotypes,
         rng=rng,
         parallelism=parallelism,
         maf_thres=conf.maf_threshold,
         cache=cache,
         train_frac=conf.get("train.train_frac", 0.9),
+        phased=conf.phased,
+        ploidy=conf.ploidy,
         filter_pop=filter_pop,
         filter_modelspec=filter_modelspec,
         filter_AF=filter_AF,
@@ -139,10 +145,13 @@ def do_eval(conf):
             ref_pop=ref_pop,
             num_rows=conf.num_rows,
             num_cols=conf.num_cols,
+            num_haplotypes=conf.num_haplotypes,
             rng=rng,
             parallelism=parallelism,
             maf_thres=conf.maf_threshold,
             cache=extra_cache,
+            phased=conf.phased,
+            ploidy=conf.ploidy,
         )
         extra_data, _, extra_metadata = data
         n = len(extra_data)
@@ -257,8 +266,8 @@ def get_predictions(conf, pred_file, samples_file):
         winsize=conf.sequence_length,
         winstep=conf.apply["step"],
         num_rows=conf.num_rows,
-        counts=conf.sample_counts(),
-        indices=conf.pop_indices(),
+        counts=conf.sample_counts(haploid=conf.phased),
+        indices=conf.pop_indices(haploid=conf.phased),
         ref_pop=conf.ref_pop,
         samples_file=samples_file,
         min_seg_sites=conf.apply["min_seg_sites"],
@@ -266,6 +275,8 @@ def get_predictions(conf, pred_file, samples_file):
         maf_thres=conf.maf_threshold,
         parallelism=parallelism,
         rng=rng,
+        phased=conf.phased,
+        ploidy=conf.ploidy,
     )
 
     label = list(conf.tranche.keys())[1]
@@ -337,8 +348,8 @@ def do_vcfplot(conf):
             winsize=conf.sequence_length,
             winstep=conf.apply["step"],
             num_rows=conf.num_rows,
-            counts=conf.sample_counts(),
-            indices=conf.pop_indices(),
+            counts=conf.sample_counts(haploid=conf.phased),
+            indices=conf.pop_indices(haploid=conf.phased),
             ref_pop=conf.ref_pop,
             samples_file=samples_file,
             min_seg_sites=conf.apply["min_seg_sites"],
@@ -346,6 +357,8 @@ def do_vcfplot(conf):
             maf_thres=conf.maf_threshold,
             parallelism=parallelism,
             rng=rng,
+            phased=conf.phased,
+            ploidy=conf.ploidy,
         )
         plots.vcf_hap_matrix(conf, vcf_batch_gen, conf.pdf_file)
 

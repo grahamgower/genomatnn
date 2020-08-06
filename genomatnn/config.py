@@ -10,7 +10,6 @@ import toml
 
 from genomatnn import (
     sim,
-    vcf,
     calibrate,
 )
 
@@ -51,7 +50,6 @@ class Config:
         self.ref_pop = None
         self.maf_threshold = None
         self.num_rows = None
-        self.num_cols = None  # XXX: remove this in favour of num_haplotypes
         self.num_haplotypes = None
         self.pop = None
         self.sequence_length = None
@@ -59,9 +57,9 @@ class Config:
         self.vcf_samples = None
         self.tranche = None
         self.chr = None
-        self.phasing = None
         self.pop2tsidx = None
         self.calibration = None
+        self.ploidy = 2  # TODO: find and fix ploidy=2 assumptions.
 
         # Read in toml file and fill in the attributes.
         self.config = toml.load(self.filename)
@@ -73,6 +71,11 @@ class Config:
         self._getcfg_eval()
         self._getcfg_apply()
         self._getcfg_calibration()
+
+        self.phased = self.get("vcf.phased", False)
+        self.num_cols = self.num_haplotypes
+        if not self.phased:
+            self.num_cols = self.num_haplotypes // self.ploidy
 
         # TODO: Add introspection to check required attributes are set.
         #       Check types? Use attrs somehow?
@@ -115,8 +118,7 @@ class Config:
             )
         self.pop = pop
         self.vcf_samples = list(itertools.chain(*self.pop.values()))
-        self.num_haplotypes = 2 * len(self.vcf_samples)
-        self.num_cols = self.num_haplotypes  # XXX: remove this
+        self.num_haplotypes = self.ploidy * len(self.vcf_samples)
 
     def _getcfg_sim(self):
         self.sim = self.config.get("sim")
@@ -166,7 +168,6 @@ class Config:
         for fn in self.file:
             if not fn.exists():
                 raise ConfigError(f"{fn}: file not found.")
-        self.phasing = vcf.sample_phasing(str(self.file[0]), self.vcf_samples)
 
     def _getcfg_train(self):
         train = self.config.get("train")
@@ -239,19 +240,23 @@ class Config:
         except KeyError:
             return default
 
-    def sample_counts(self):
+    def sample_counts(self, haploid=True):
         """
-        Haploid sample numbers for each population.
+        Sample numbers for each population.
         """
-        # TODO: Use self.phasing here, and fix the tree sequence genotype
-        #       matrices to match.
-        return {p: 2 * len(v) for p, v in self.pop.items()}
+        if haploid:
+            # Return the number of haploid chromosomes.
+            x = self.ploidy
+        if not haploid:
+            # Return the number of individuals.
+            x = 1
+        return {p: x * len(v) for p, v in self.pop.items()}
 
-    def pop_indices(self):
+    def pop_indices(self, haploid=True):
         """
-        Indices partitioning the populations in a genotype matrix.
+        Indices partitioning the populations in a haplotype/genotype matrix.
         """
-        indices = np.cumsum(list(self.sample_counts().values()))
+        indices = np.cumsum(list(self.sample_counts(haploid=haploid).values()))
         # Record the starting indices.
         indices = [0] + list(indices[:-1])
         return dict(zip(self.pop.keys(), indices))
