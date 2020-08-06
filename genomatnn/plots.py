@@ -666,7 +666,7 @@ def hap_matrix1(
     indicating the population of origin for a given haplotype/genotype column.
     """
     # vmax heuristic to make the patterns clear
-    x = ploidy if phased else 1
+    x = 1 if phased else ploidy
     vmax = int(round(x * np.log2(sequence_length / 20 / A.shape[0])))
     im = ax.imshow(
         A,
@@ -730,7 +730,7 @@ def hap_matrix1(
     if phased:
         ax_pops.set_xlabel("Haplotypes")
     else:
-        ax_pops.set_xlabel("Genotypes")
+        ax_pops.set_xlabel("Individuals")
 
     ax.figure.tight_layout()
 
