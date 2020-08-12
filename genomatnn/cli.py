@@ -409,9 +409,10 @@ def parse_args(args_list):
         p.add_argument(
             "-v",
             "--verbose",
-            default=False,
-            action="store_true",
-            help="Increase verbosity to debug level.",
+            default=0,
+            action="count",
+            help="Increase verbosity. Specify twice for messages from "
+            "third party libraries (e.g. tensorflow and matplotlib).",
         )
         p.add_argument(
             "conf", metavar="conf.toml", type=str, help="Configuration file."
@@ -511,17 +512,16 @@ def parse_args(args_list):
         os.environ["OMP_NUM_THREADS"] = str(args.parallelism)
 
     # Pin threads to CPUs when using tensorflow MKL builds.
-    if args.verbose:
+    if args.verbose >= 2:
         os.environ["KMP_AFFINITY"] = "granularity=fine,verbose,compact,1,0"
     else:
         os.environ["KMP_AFFINITY"] = "granularity=fine,noverbose,compact,1,0"
 
-    if args.verbose:
-        config.logger_setup("DEBUG")
-        # Unmute tensorflow.
+    # Unmute tensorflow.
+    if args.verbose >= 2:
         os.environ["TF_CPP_MIN_LOG_LEVEL"] = "0"
-    else:
-        config.logger_setup("INFO")
+
+    config.logger_setup(args.verbose)
 
     # Transfer args to the config
     if args.subcommand == "sim":

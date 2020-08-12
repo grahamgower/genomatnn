@@ -8,6 +8,7 @@ import itertools
 import numpy as np
 import toml
 
+import genomatnn
 from genomatnn import (
     sim,
     calibrate,
@@ -30,11 +31,21 @@ class _CLIFormatter(logging.Formatter):
         return super().format(record)
 
 
-def logger_setup(level):
+def logger_setup(verbosity):
+    level = "INFO"
+    if verbosity >= 1:
+        level = "DEBUG"
+    logging.captureWarnings(True)
     handler = logging.StreamHandler(sys.stderr)
     handler.setFormatter(_CLIFormatter())
-    logging.basicConfig(handlers=[handler], level=level)
-    logging.captureWarnings(True)
+    # messages from genomatnn
+    logger = logging.getLogger(genomatnn.__name__)
+    logger.setLevel(level)
+    # messages from non-genomatnn imports
+    root_level = "WARNING"
+    if verbosity >= 2:
+        root_level = "DEBUG"
+    logging.basicConfig(handlers=[handler], level=root_level)
 
 
 class ConfigError(RuntimeError):
