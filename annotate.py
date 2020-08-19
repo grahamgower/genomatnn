@@ -12,7 +12,7 @@ class Intervals:
     """
     A class for manipulating GFF3-like intervals.
     This is a wrapper around a numpy record array, with some convenience
-    functions for doing set operations on 1-based, closed, integer intervals.
+    functions for doing set operations on closed integer intervals.
     """
 
     def __init__(self, data):
@@ -61,7 +61,7 @@ class Intervals:
 
     def overlap(self, start, end, yield_all=False):
         """
-        Find all intervals that overlap the query interval(s) ``start - end``.
+        Find all intervals that overlap the query interval(s) ``[start, end]``.
         ``start`` and ``end`` may be single numbers, or numpy arrays.
         Returns a generator yielding a tuple (qi, record_idx), where qi is the
         index of the query interval and record_idx is a list of indexes record
@@ -99,9 +99,12 @@ class Intervals:
     def _iter_merge(self):
         """
         Generator of ``[start, end]`` coordinates for merged intervals.
+
+        This only does the correct thing for closed intervals.
         """
         if len(self) == 0:
             return
+        start = None
         end = -np.inf
         pending = True
         for record in sorted(self, key=operator.itemgetter("start")):
@@ -121,6 +124,8 @@ class Intervals:
     def merge(self):
         """
         Returns a new instance containing merged intervals.
+
+        This only does the correct thing for closed intervals.
         """
         records = list(self._iter_merge())
         recarray = np.rec.fromrecords(records, dtype=[("start", int), ("end", int)])
@@ -296,12 +301,9 @@ def annotate(*, gff_file, pred_file, file, x=None, n=None, pad=100000):
         for j, gene_idx in chr_genes.overlap(records.start, records.end):
             record = records[j]
             gene_names = []
-            # print(chrom, *record, sep="\t", file=file)
             for j in gene_idx:
                 attr = parse_gff3_attributes(chr_genes[j].attributes)
                 gene_names.append(attr.get("Name"))
-                # print("", "", "", attr.get("Name"), attr.get("description"), sep="\t", file=file)
-            # continue
             print(
                 chrom,
                 record.start,
@@ -315,18 +317,22 @@ def annotate(*, gff_file, pred_file, file, x=None, n=None, pad=100000):
 if __name__ == "__main__":
     import sys
 
-    if len(sys.argv) != 3:
-        print(f"usage: {sys.argv[0]} file.gff3 predictions.txt")
+    if len(sys.argv) != 4:
+        print(f"usage: {sys.argv[0]} file.gff3 predictions.txt x")
         exit(1)
 
     gff_file = sys.argv[1]
     pred_file = sys.argv[2]
+    x = float(sys.argv[3])
 
-    # annotate top x proportion of hits
-    x = 0.01
-    n = None
-    # annotate top n hits
-    n = 20
-    x = None
+    if x <= 0:
+        raise ValueError("x must be greater than zero")
+    if x < 1:
+        # annotate top x proportion of hits
+        n = None
+    else:
+        # annotate top n hits
+        n = round(x)
+        x = None
 
     annotate(gff_file=gff_file, pred_file=pred_file, file=sys.stdout, n=n, x=x)
