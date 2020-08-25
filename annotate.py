@@ -86,13 +86,14 @@ class Intervals:
             zip(query_idx, self_idx), operator.itemgetter(0)
         ):
             if yield_all:
-                while last_qi != qi:
+                while last_qi < qi:
                     yield last_qi, []
                     last_qi += 1
             yield qi, [idx[1] for idx in groups]
+            last_qi += 1
         if yield_all:
             qi = len(start) - 1
-            while last_qi != qi:
+            while last_qi < qi:
                 yield last_qi, []
                 last_qi += 1
 
@@ -298,7 +299,7 @@ def annotate(*, gff_file, pred_file, file, x=None, n=None, pad=100000):
         records = Intervals(chr_preds).merge()
         chr_genes = genes.subset(seqid=chrom)
 
-        for j, gene_idx in chr_genes.overlap(records.start, records.end):
+        for j, gene_idx in chr_genes.overlap(records.start, records.end, yield_all=True):
             record = records[j]
             gene_names = []
             for j in gene_idx:
@@ -306,8 +307,9 @@ def annotate(*, gff_file, pred_file, file, x=None, n=None, pad=100000):
                 gene_names.append(attr.get("Name"))
             print(
                 chrom,
-                record.start,
-                record.end,
+                # report the region without padding
+                record.start + pad,
+                record.end - pad,
                 "; ".join(gene_names),
                 sep="\t",
                 file=file,
