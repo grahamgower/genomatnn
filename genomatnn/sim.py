@@ -291,7 +291,6 @@ def homsap_composite_Nea_to_CEU(
     dfe=False,
     slim_script=False,
     min_allele_frequency=0,
-    selection=True,
     logunif_s=True,
     s_lo=0.001,
     s_hi=0.1,
@@ -312,17 +311,12 @@ def homsap_composite_Nea_to_CEU(
 
     t_delta = 1e3 / model.generation_time
     T_mut = rng.uniform(T_Nea_CEU_mig + t_delta, T_Nea_human_split)
-    if selection:
-        T_sel = rng.uniform(t_delta, T_Nea_CEU_mig)
-        if logunif_s:
-            # uniform on a log scale
-            s = math.exp(rng.uniform(math.log(s_lo), math.log(s_hi)))
-        else:
-            s = rng.uniform(s_lo, s_hi)
+    T_sel = rng.uniform(t_delta, T_Nea_CEU_mig)
+    if logunif_s:
+        # uniform on a log scale
+        s = math.exp(rng.uniform(math.log(s_lo), math.log(s_hi)))
     else:
-        T_sel = 0
-        s = 0
-        min_allele_frequency = 0
+        s = rng.uniform(s_lo, s_hi)
 
     coordinate = round(contig.recombination_map.get_length() / 2)
 
@@ -336,52 +330,45 @@ def homsap_composite_Nea_to_CEU(
             # Save state before the mutation is introduced
             save=True,
         ),
+        # Mutation is positively selected in CEU
+        stdpopsim.ext.ChangeMutationFitness(
+            start_time=T_sel,
+            end_time=0,
+            mutation_type_id=mut_id,
+            population_id=pop["CEU"],
+            selection_coeff=s,
+            dominance_coeff=0.5,
+        ),
+        # Allele frequency conditioning. If the condition is not met, we
+        # restore to the most recent save point.
+        stdpopsim.ext.ConditionOnAlleleFrequency(
+            # FIXME: GenerationAfter(T_mut) < T_Nea_CEU_mig
+            start_time=stdpopsim.ext.GenerationAfter(T_mut),
+            end_time=T_Nea_CEU_mig,
+            mutation_type_id=mut_id,
+            population_id=pop["Nea"],
+            op=">",
+            allele_frequency=0,
+        ),
+        stdpopsim.ext.ConditionOnAlleleFrequency(
+            start_time=stdpopsim.ext.GenerationAfter(T_Nea_CEU_mig),
+            end_time=0,
+            mutation_type_id=mut_id,
+            population_id=pop["CEU"],
+            op=">",
+            allele_frequency=0,
+            # Update save point at start_time.
+            save=True,
+        ),
+        stdpopsim.ext.ConditionOnAlleleFrequency(
+            start_time=0,
+            end_time=0,
+            mutation_type_id=mut_id,
+            population_id=pop["CEU"],
+            op=">",
+            allele_frequency=min_allele_frequency,
+        ),
     ]
-    if selection:
-        extended_events.append(
-            # Mutation is positively selected in CEU
-            stdpopsim.ext.ChangeMutationFitness(
-                start_time=T_sel,
-                end_time=0,
-                mutation_type_id=mut_id,
-                population_id=pop["CEU"],
-                selection_coeff=s,
-                dominance_coeff=0.5,
-            )
-        )
-    extended_events.extend(
-        [
-            # Allele frequency conditioning. If the condition is not met, we
-            # restore to the most recent save point.
-            stdpopsim.ext.ConditionOnAlleleFrequency(
-                # FIXME: GenerationAfter(T_mut) < T_Nea_CEU_mig
-                start_time=stdpopsim.ext.GenerationAfter(T_mut),
-                end_time=T_Nea_CEU_mig,
-                mutation_type_id=mut_id,
-                population_id=pop["Nea"],
-                op=">",
-                allele_frequency=0,
-            ),
-            stdpopsim.ext.ConditionOnAlleleFrequency(
-                start_time=stdpopsim.ext.GenerationAfter(T_Nea_CEU_mig),
-                end_time=0,
-                mutation_type_id=mut_id,
-                population_id=pop["CEU"],
-                op=">",
-                allele_frequency=0,
-                # Update save point at start_time.
-                save=True,
-            ),
-            stdpopsim.ext.ConditionOnAlleleFrequency(
-                start_time=0,
-                end_time=0,
-                mutation_type_id=mut_id,
-                population_id=pop["CEU"],
-                op=">",
-                allele_frequency=min_allele_frequency,
-            ),
-        ]
-    )
 
     engine = stdpopsim.get_engine("slim")
     ts = engine.simulate(
@@ -773,241 +760,6 @@ def homsap_papuans_Sweep_Papuan(
     )
 
 
-def homsap_papuans_AI_Den_to_CHB(
-    model,
-    contig,
-    samples,
-    seed,
-    dfe=False,
-    Den="Den1",
-    slim_script=False,
-    min_allele_frequency=0,
-    logunif_s=True,
-    s_lo=0.001,
-    s_hi=0.1,
-    **kwargs,
-):
-    if Den not in ("Den1", "Den2"):
-        raise ValueError("Source population Den must be either Den1 or Den2.")
-    rng = random.Random(seed)
-    pop = {p.id: i for i, p in enumerate(model.populations)}
-
-    mutation_types = []
-    if dfe:
-        mutation_types.extend(stdpopsim.ext.KimDFE())
-    positive = stdpopsim.ext.MutationType(convert_to_substitution=False)
-    mutation_types.append(positive)
-    mut_id = len(mutation_types)
-
-    T_Den_Nea_split = contact.split_time(model, pop["DenA"], pop["NeaA"])
-    T_DenA_Den1_split = contact.split_time(model, pop["DenA"], pop["Den1"])
-    T_DenA_Den2_split = contact.split_time(model, pop["DenA"], pop["Den2"])
-    T_CEU_CHB_split = contact.split_time(model, pop["CEU"], pop["CHB"])
-
-    T_Den1_Papuan_mig = contact.tmrca(model, pop["Papuan"], pop["Den1"])
-    T_Den2_Papuan_mig = contact.tmrca(model, pop["Papuan"], pop["Den2"])
-
-    if Den == "Den1":
-        T_Den_split = T_DenA_Den1_split
-        T_mig = T_Den1_Papuan_mig
-    else:
-        T_Den_split = T_DenA_Den2_split
-        T_mig = T_Den2_Papuan_mig
-
-    t_delta = 1e3 / model.generation_time
-    T_mut = rng.uniform(T_Den_split + t_delta, T_Den_Nea_split)
-    T_sel = rng.uniform(t_delta, T_CEU_CHB_split)
-    if logunif_s:
-        # uniform on a log scale
-        s = math.exp(rng.uniform(math.log(s_lo), math.log(s_hi)))
-    else:
-        s = rng.uniform(s_lo, s_hi)
-
-    coordinate = round(contig.recombination_map.get_length() / 2)
-
-    extended_events = [
-        # Draw mutation in Denisovans.
-        stdpopsim.ext.DrawMutation(
-            time=T_mut,
-            mutation_type_id=mut_id,
-            population_id=pop["DenA"],
-            coordinate=coordinate,
-            # Save state before the mutation is introduced
-            save=True,
-        ),
-        # Mutation is positively selected in CHB
-        stdpopsim.ext.ChangeMutationFitness(
-            start_time=T_sel,
-            end_time=0,
-            mutation_type_id=mut_id,
-            population_id=pop["CHB"],
-            selection_coeff=s,
-            dominance_coeff=0.5,
-        ),
-        # Allele frequency conditioning. If the condition is not met, we
-        # restore to the most recent save point.
-        stdpopsim.ext.ConditionOnAlleleFrequency(
-            # FIXME: GenerationAfter(T_mut) < T_Den_split
-            start_time=stdpopsim.ext.GenerationAfter(T_mut),
-            end_time=T_Den_split,
-            mutation_type_id=mut_id,
-            population_id=pop["DenA"],
-            op=">",
-            allele_frequency=0,
-        ),
-        stdpopsim.ext.ConditionOnAlleleFrequency(
-            start_time=stdpopsim.ext.GenerationAfter(T_Den_split),
-            end_time=T_mig,
-            mutation_type_id=mut_id,
-            population_id=pop[Den],
-            op=">",
-            allele_frequency=0,
-            # Update save point at start_time.
-            save=True,
-        ),
-        stdpopsim.ext.ConditionOnAlleleFrequency(
-            start_time=stdpopsim.ext.GenerationAfter(T_mig),
-            end_time=stdpopsim.ext.GenerationAfter(T_mig),
-            mutation_type_id=mut_id,
-            population_id=pop["Papuan"],
-            op=">",
-            allele_frequency=0,
-            # Update save point at start_time.
-            save=True,
-        ),
-        stdpopsim.ext.ConditionOnAlleleFrequency(
-            start_time=0,
-            end_time=0,
-            mutation_type_id=mut_id,
-            population_id=pop["CHB"],
-            op=">",
-            allele_frequency=min_allele_frequency,
-        ),
-    ]
-
-    engine = stdpopsim.get_engine("slim")
-    ts = engine.simulate(
-        model,
-        contig,
-        samples,
-        seed=seed,
-        mutation_types=mutation_types,
-        extended_events=extended_events,
-        slim_script=slim_script,
-        slim_burn_in=10 if dfe else 0.1,
-        slim_scaling_factor=10,
-    )
-
-    return (
-        ts,
-        (
-            contig.origin,
-            T_mut * model.generation_time,
-            T_sel * model.generation_time,
-            s,
-        ),
-    )
-
-
-def homsap_papuans_Sweep_CHB(
-    model,
-    contig,
-    samples,
-    seed,
-    dfe=False,
-    slim_script=False,
-    min_allele_frequency=0,
-    logunif_s=True,
-    s_lo=0.001,
-    s_hi=0.1,
-    **kwargs,
-):
-    rng = random.Random(seed)
-
-    pop = {p.id: i for i, p in enumerate(model.populations)}
-
-    mutation_types = []
-    if dfe:
-        mutation_types.extend(stdpopsim.ext.KimDFE())
-    positive = stdpopsim.ext.MutationType(convert_to_substitution=False)
-    mutation_types.append(positive)
-    mut_id = len(mutation_types)
-
-    T_CEU_CHB_split = contact.split_time(model, pop["CEU"], pop["CHB"])
-
-    T_sel = rng.uniform(1e3 / model.generation_time, T_CEU_CHB_split)
-    T_mut = rng.uniform(T_sel, T_CEU_CHB_split)
-    if logunif_s:
-        # uniform on a log scale
-        s = math.exp(rng.uniform(math.log(s_lo), math.log(s_hi)))
-    else:
-        s = rng.uniform(s_lo, s_hi)
-
-    coordinate = round(contig.recombination_map.get_length() / 2)
-
-    extended_events = [
-        # Draw mutation.
-        stdpopsim.ext.DrawMutation(
-            time=T_mut,
-            mutation_type_id=mut_id,
-            population_id=pop["CHB"],
-            coordinate=coordinate,
-            # Save state before the mutation is introduced.
-            save=True,
-        ),
-        # Mutation is positively selected at time T_sel.
-        stdpopsim.ext.ChangeMutationFitness(
-            start_time=T_sel,
-            end_time=0,
-            mutation_type_id=mut_id,
-            population_id=pop["CHB"],
-            selection_coeff=s,
-            dominance_coeff=0.5,
-        ),
-        # Allele frequency conditioning. If the condition is not met, we
-        # restore to the save point.
-        stdpopsim.ext.ConditionOnAlleleFrequency(
-            start_time=stdpopsim.ext.GenerationAfter(T_mut),
-            end_time=0,
-            mutation_type_id=mut_id,
-            population_id=pop["CHB"],
-            op=">",
-            allele_frequency=0,
-        ),
-        stdpopsim.ext.ConditionOnAlleleFrequency(
-            start_time=0,
-            end_time=0,
-            mutation_type_id=mut_id,
-            population_id=pop["CHB"],
-            op=">",
-            allele_frequency=min_allele_frequency,
-        ),
-    ]
-
-    engine = stdpopsim.get_engine("slim")
-    ts = engine.simulate(
-        model,
-        contig,
-        samples,
-        seed=seed,
-        mutation_types=mutation_types,
-        extended_events=extended_events,
-        slim_script=slim_script,
-        slim_burn_in=10 if dfe else 0.1,
-        slim_scaling_factor=10,
-    )
-
-    return (
-        ts,
-        (
-            contig.origin,
-            T_mut * model.generation_time,
-            T_sel * model.generation_time,
-            s,
-        ),
-    )
-
-
 @attr.s(kw_only=True)
 class ModelSpec:
     # Base demographic model.
@@ -1032,13 +784,6 @@ _simulations = {
                 homsap_papuans_AI_Den_to_Papuan, Den="Den2"
             ),
             "Sweep/Papuan": homsap_papuans_Sweep_Papuan,
-            "AI/Den1_to_CHB": functools.partial(
-                homsap_papuans_AI_Den_to_CHB, Den="Den1"
-            ),
-            "AI/Den2_to_CHB": functools.partial(
-                homsap_papuans_AI_Den_to_CHB, Den="Den2"
-            ),
-            "Sweep/CHB": homsap_papuans_Sweep_CHB,
         },
     ),
     "HomSap/HomininComposite_4G20": ModelSpec(
@@ -1048,9 +793,6 @@ _simulations = {
             "Neutral/msprime": functools.partial(generic_Neutral, engine="msprime"),
             "DFE": homsap_DFE,
             "AI/Nea_to_CEU": functools.partial(homsap_composite_Nea_to_CEU, s_lo=1e-4),
-            "Neutral/Nea_to_CEU": functools.partial(
-                homsap_composite_Nea_to_CEU, selection=False
-            ),
             "Sweep/CEU": homsap_composite_Sweep_CEU,
         },
     ),

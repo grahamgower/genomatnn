@@ -333,6 +333,8 @@ def check_data(data, tranche, num_rows, num_cols):
         val_labels,
         val_metadata,
     ) = data
+    logger.debug(f"Training data has shape {train_data.shape}.")
+    logger.debug(f"Validation data has shape {val_data.shape}.")
     for d in (train_data, val_data):
         assert len(d.shape) == 3, "Data has too many dimensions."
         assert d.shape[1:3] == (num_rows, num_cols), (
