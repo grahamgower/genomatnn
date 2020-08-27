@@ -2,7 +2,6 @@ import tempfile
 import subprocess
 import unittest
 import unittest.mock as mock
-import itertools
 
 import numpy as np
 import stdpopsim
@@ -215,15 +214,11 @@ class PiecewiseConstantSizeMixin:
         """
         # surely there's a simpler way!
         assert ts.num_mutations == 1
-        alive = list(
-            itertools.chain.from_iterable(
-                ts.individual(i).nodes for i in ts.individuals_alive_at(0)
-            )
-        )
+        samples = ts.samples()
         mut = next(ts.mutations())
         tree = ts.at(ts.site(mut.site).position)
-        have_mut = [u for u in alive if tree.is_descendant(u, mut.node)]
-        af = len(have_mut) / len(alive)
+        have_mut = [u for u in samples if tree.is_descendant(u, mut.node)]
+        af = len(have_mut) / len(samples)
         return af
 
 
