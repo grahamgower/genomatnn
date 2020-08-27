@@ -92,27 +92,30 @@ def ts2mat(
     ac_thres = maf_thres * ts.num_samples
     A = np.zeros((num_rows, ts.num_samples), dtype=np.int8)
     sequence_length = ts.sequence_length
+    selected_mut_position = round(sequence_length / 2)
     if pop_intervals is None:
         pop_intervals = [(0, ts.num_samples)]
     af = [0] * len(pop_intervals)  # Allele frequency of the drawn mutation.
     for variant in ts.variants():
         genotypes = variant.genotypes
 
-        # We wish to exclude the mutation added in by SLiM that's under
-        # selection in our selection scenarios. It's possible that a CNN
-        # could learn to classify based on this mutation alone, which
-        # is problematic given that we added it in a biologically
-        # unrealistic way (i.e. at a fixed position).
-        # XXX: need a less fragile detection/removal of the drawn mutation.
-        skip_variant = False
-        for mut in variant.site.mutations:
-            if len(mut.metadata) > 0:
-                assert all(np.array(af) == 0)
-                af = [genotypes[a:b].sum() / (b - a) for a, b in pop_intervals]
-                if exclude_mut_with_metadata:
-                    skip_variant = True
-        if skip_variant:
-            continue
+        if variant.site.position == selected_mut_position:
+            # We wish to exclude the mutation added in by SLiM that's under
+            # selection in our selection scenarios. It's possible that a CNN
+            # could learn to classify based on this mutation alone, which
+            # is problematic given that we added it in a biologically
+            # unrealistic way (i.e. at a fixed position).
+            # XXX: need a less fragile detection/removal of the drawn mutation.
+            skip_variant = False
+            for mut in variant.site.mutations:
+                if len(mut.metadata) > 0:
+                    assert all(np.array(af) == 0)
+                    af = [genotypes[a:b].sum() / (b - a) for a, b in pop_intervals]
+                    if exclude_mut_with_metadata:
+                        skip_variant = True
+                        break
+            if skip_variant:
+                continue
 
         ac1 = np.sum(genotypes)
         ac0 = len(genotypes) - ac1

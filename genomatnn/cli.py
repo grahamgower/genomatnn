@@ -135,7 +135,8 @@ def do_eval(conf):
         # Translate ref_pop and pop_indices to tree sequence population indices.
         ref_pop = conf.pop2tsidx[conf.ref_pop]
         pop_indices = {
-            conf.pop2tsidx[pop]: idx for pop, idx in conf.pop_indices().items()
+            conf.pop2tsidx[pop]: idx
+            for pop, idx in conf.pop_indices(haploid=conf.phased).items()
         }
         parallelism = conf.parallelism if conf.parallelism > 0 else os.cpu_count()
         data = convert.prepare_extra(
