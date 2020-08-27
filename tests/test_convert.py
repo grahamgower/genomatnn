@@ -229,12 +229,13 @@ class PiecewiseConstantSizeMixin:
 
 class TestDrawnMutation(unittest.TestCase, PiecewiseConstantSizeMixin):
     def test_exclusion_of_drawn_mutation(self):
+        coordinate = round(self.contig.recombination_map.get_length() / 2)
         extended_events = [
             stdpopsim.ext.DrawMutation(
                 time=self.T_mut,
                 mutation_type_id=self.mut_id,
                 population_id=0,
-                coordinate=100,
+                coordinate=coordinate,
                 save=True,
             ),
             stdpopsim.ext.ConditionOnAlleleFrequency(
