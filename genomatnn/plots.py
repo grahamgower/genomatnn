@@ -52,16 +52,19 @@ def predictions_all_chr(ax, header, preds_by_chr, lengths_by_chr):
         lsum += chrlen
         i = (i + 1) % 2
 
+    chrindexes = list(range(len(chrnames)))
+    # chrindexes = list(range(4, len(chrnames)+1, 5))
+
     ax.set_title("CNN predictions")
-    ax.set_xlabel("Genomic coordinate")
+    ax.set_xlabel("Chromosome")
     ax.set_ylabel(label)
-    ax.set_xticks(chrmid)
-    ax.set_xticklabels(chrnames, rotation=90)
+    ax.set_xticks([chrmid[i] for i in chrindexes])
+    ax.set_xticklabels([chrnames[i] for i in chrindexes], rotation=90)
     ax.set_ylim(-0.02, 1.02)
 
     x1, x2 = ax.get_xlim()
-    for p in (0.5, 0.9):
-        ax.hlines(p, x1, x2, linestyle="--", color="gray", lw=0.5, zorder=0)
+    for p in (0.5,):
+        ax.hlines(p, x1, x2, linestyle="-", color="gray", lw=0.5, zorder=0)
     ax.set_xlim(x1, x2)
 
 
@@ -92,8 +95,8 @@ def predictions_one_chr(ax, header, chrom, preds, chrlen):
     ax.set_ylim(-0.02, 1.02)
 
     x1, x2 = ax.get_xlim()
-    for p in (0.5, 0.9):
-        ax.hlines(p, x1, x2, linestyle="--", color="gray", lw=0.5, zorder=0)
+    for p in (0.5,):
+        ax.hlines(p, x1, x2, linestyle="-", color="gray", lw=0.5, zorder=0)
     ax.set_xlim(x1, x2)
 
     if chrom.startswith("chr"):
@@ -256,7 +259,7 @@ def roc(
         axs[0].plot(fpr, tpr, color=c, linestyle=ls, label=label)
         if inset:
             ax0_inset.plot(fpr, tpr, color=c, linestyle=ls)
-        for i, ch in zip((50, 90), ("o", "x")):
+        for i, ch in zip((50,), ("o", "x")):
             if ch == "x":
                 ec = "none"
                 fc = c
@@ -281,7 +284,7 @@ def roc(
         axs[1].plot(recall, precision, color=c, linestyle=ls, label=label)
         # axs[1].scatter(
         #        recall, precision, marker=m, facecolor=c, edgecolor=c, label=label)
-        for i, ch in zip((50, 90), ("o", "x")):
+        for i, ch in zip((50,), ("o", "x")):
             if ch == "x":
                 ec = "none"
                 fc = c
@@ -303,7 +306,7 @@ def roc(
 
             axs[2].plot(tnr, npv, color=c, linestyle=ls, label=label)
             # axs[2].scatter(fnr, _for, marker=m, facecolor=c, edgecolor=c, label=label)
-            for i, ch in zip((50, 90), ("o", "x")):
+            for i, ch in zip((50,), ("o", "x")):
                 if ch == "x":
                     ec = "none"
                     fc = c
@@ -324,16 +327,6 @@ def roc(
                 markeredgecolor="k",
                 markersize=10,
                 label=f"Pr{{{condition_positive}}} > 0.50",
-            ),
-            Line2D(
-                [0],
-                [0],
-                marker="x",
-                c="none",
-                markerfacecolor="k",
-                markeredgecolor="k",
-                markersize=10,
-                label=f"Pr{{{condition_positive}}} > 0.90",
             ),
         ]
     )

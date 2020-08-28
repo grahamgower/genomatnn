@@ -199,18 +199,23 @@ def do_eval(conf):
         extra_labels = None
         extra_metadata = None
 
+    hap_pdf = str(plot_dir / "genotype_matrices.pdf")
+    plots.ts_hap_matrix(conf, val_data, val_pred, val_metadata, hap_pdf)
+
     weights = conf.get("calibrate.weights")
     val_upidx = calibrate.resample_indexes(val_metadata["modelspec"], weights)
 
-    hap_pdf = str(plot_dir / "genotype_matrices.pdf")
-    plots.ts_hap_matrix(conf, val_data, val_pred, val_metadata, hap_pdf)
+    resampled_val_labels = val_labels[val_upidx]
+    resampled_val_pred = val_pred[val_upidx]
+    resampled_val_pred_cal = val_pred_cal[val_upidx]
+    resampled_val_metadata = val_metadata[val_upidx]
 
     roc_pdf = str(plot_dir / "roc.pdf")
     plots.roc(
         conf=conf,
-        labels=val_labels[val_upidx],
-        pred=val_pred_cal[val_upidx],
-        metadata=val_metadata[val_upidx],
+        labels=resampled_val_labels,
+        pred=resampled_val_pred_cal,
+        metadata=resampled_val_metadata,
         extra_labels=extra_labels,
         extra_pred=extra_pred_cal,
         extra_metadata=extra_metadata,
@@ -218,21 +223,37 @@ def do_eval(conf):
     )
 
     accuracy_pdf = str(plot_dir / "accuracy.pdf")
-    plots.accuracy(conf, val_labels, val_pred_cal, val_metadata, accuracy_pdf)
+    plots.accuracy(
+        conf,
+        resampled_val_labels,
+        resampled_val_pred_cal,
+        resampled_val_metadata,
+        accuracy_pdf,
+    )
 
     confusion_pdf = str(plot_dir / "confusion.pdf")
-    plots.confusion(conf, val_labels, val_pred_cal, val_metadata, confusion_pdf)
+    plots.confusion(
+        conf,
+        resampled_val_labels,
+        resampled_val_pred_cal,
+        resampled_val_metadata,
+        confusion_pdf,
+    )
 
     # Apply various calibrations to the prediction probabilties.
     upidx = calibrate.resample_indexes(train_metadata["modelspec"], weights)
-    preds = [("Uncal.", val_pred[val_upidx])]
+    resampled_train_pred = train_pred[upidx]
+    resampled_train_labels = train_labels[upidx]
+    preds = [("Uncal.", resampled_val_pred)]
     for cc in calibrate.calibration_classes:
         label = cc.__name__
-        cc_pred = cc().fit(train_pred[upidx], train_labels[upidx]).predict(val_pred)
+        cc_pred = (
+            cc().fit(resampled_train_pred, resampled_train_labels).predict(val_pred)
+        )
         preds.append((label, cc_pred[val_upidx]))
 
     reliability_pdf = str(plot_dir / "reliability.pdf")
-    plots.reliability(conf, val_labels[val_upidx], preds, reliability_pdf)
+    plots.reliability(conf, resampled_val_labels, preds, reliability_pdf)
 
 
 def get_predictions(conf, pred_file, samples_file):
