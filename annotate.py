@@ -92,7 +92,7 @@ class Intervals:
             yield qi, [idx[1] for idx in groups]
             last_qi += 1
         if yield_all:
-            qi = len(start) - 1
+            qi = len(start)
             while last_qi < qi:
                 yield last_qi, []
                 last_qi += 1
