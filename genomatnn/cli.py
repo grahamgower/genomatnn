@@ -164,7 +164,6 @@ def do_eval(conf):
     plot_dir = pathlib.Path(conf.nn_hdf5_file[: -len(".hdf5")])
     plot_dir.mkdir(parents=True, exist_ok=True)
 
-    logger.debug("Applying tensorflow to validation data...")
     from genomatnn import tfstuff
     import tensorflow as tf
     from tensorflow.keras import models
@@ -174,16 +173,16 @@ def do_eval(conf):
     strategy = tf.distribute.MirroredStrategy()
 
     with strategy.scope():
-        train_pred = model.predict(train_data)
+        logger.debug("Applying tensorflow to validation data...")
         val_pred = model.predict(val_data)
         extra_pred = None
         if extra_sims is not None:
+            logger.debug("Applying tensorflow to extra data...")
             extra_pred = model.predict(extra_data)
 
     if val_pred.shape[1] != 1:
         raise NotImplementedError("Only binary predictions are supported")
     val_pred = val_pred[:, 0]
-    train_pred = train_pred[:, 0]
     if extra_pred is not None:
         extra_pred = extra_pred[:, 0]
 
@@ -219,6 +218,14 @@ def do_eval(conf):
         val_metadata,
         confusion_pdf,
     )
+
+    if conf.no_reliability:
+        return
+
+    logger.debug("Applying tensorflow to training data...")
+    with strategy.scope():
+        train_pred = model.predict(train_data)
+    train_pred = train_pred[:, 0]
 
     weights = conf.get("calibrate.weights")
     val_upidx = calibrate.resample_indexes(val_metadata["modelspec"], weights)
@@ -460,6 +467,13 @@ def parse_args(args_list):
     )
 
     eval_parser.add_argument(
+        "--no-reliability",
+        default=False,
+        action="store_true",
+        help="Don't evaluate calibration (thus skipping reliability plots).",
+    )
+
+    eval_parser.add_argument(
         "nn_hdf5_file",
         metavar="nn.hdf5",
         type=str,
@@ -543,8 +557,10 @@ def parse_args(args_list):
         args.conf.list = args.list
         args.conf.modelspec = args.modelspec
     elif args.subcommand == "train":
+        args.conf.no_reliability = False
         args.conf.convert_only = args.convert_only
     elif args.subcommand == "eval":
+        args.conf.no_reliability = args.no_reliability
         args.conf.nn_hdf5_file = args.nn_hdf5_file
     elif args.subcommand == "apply":
         args.conf.plot_only = args.plot_only
