@@ -42,7 +42,12 @@ def predictions_all_chr(ax, header, preds_by_chr, lengths_by_chr):
     for chrom, preds in preds_by_chr.items():
         midpos = lsum + (preds[start] + preds[end]) // 2
         ax.scatter(
-            midpos, preds[label], color=colours[i], marker="o", s=10, rasterized=True,
+            midpos,
+            preds[label],
+            color=colours[i],
+            marker="o",
+            s=10,
+            rasterized=True,
         )
 
         chrlen = lengths_by_chr[chrom]
@@ -78,7 +83,12 @@ def predictions_one_chr(ax, header, chrom, preds, chrlen):
     colours = plt.get_cmap("tab10").colors
     midpos = (preds[start] + preds[end]) // 2
     ax.scatter(
-        midpos, preds[label], color=colours[0], marker="o", s=10, rasterized=True,
+        midpos,
+        preds[label],
+        color=colours[0],
+        marker="o",
+        s=10,
+        rasterized=True,
     )
     ax.set_ylabel(label)
     ax.set_xlabel("Genomic coordinate")
@@ -379,13 +389,14 @@ def roc(
     pdf.close()
 
 
-def partition2d(x, y, z, bins):
-    # Add a small value to the max, so that the max data point
-    # contributes to the last bin.
-    xmax = np.max(x) + 1e-9
-    ymax = np.max(y) + 1e-9
-    xitv = xmax / bins
-    yitv = ymax / bins
+def partition2d_logx(x, y, z, bins, precision=4):
+    x = np.log10(x)
+    xmax = round(np.max(x), precision)
+    xmin = round(np.min(x), precision)
+    ymax = round(np.max(y), precision)
+    ymin = round(np.min(y), precision)
+    xitv = round((xmax - xmin) / bins, precision)
+    yitv = round((ymax - ymin) / bins, precision)
 
     binned = collections.defaultdict(list)
     for xi, yi, zi in zip(x, y, z):
@@ -393,13 +404,18 @@ def partition2d(x, y, z, bins):
         _y = yi - (yi % yitv)
         binned[(_x, _y)].append(zi)
 
-    return binned, xitv, yitv
+    ymin = ymin - (ymin % yitv)
+    ymax = ymax - (ymax % yitv) + yitv
+    xmin = xmin - (xmin % xitv)
+    xmax = xmax - (xmax % xitv) + xitv
+    # print(np.unique([xy[0] for xy in binned.keys()]))
+    # print(f"{xmin=}, {xmax=}, {xitv=}")
+    return binned, xitv, yitv, xmin, xmax, ymin, ymax
 
 
 def accuracy(
-    conf, labels, pred, metadata, pdf_file, aspect=10 / 16, scale=1.5, bins=20
+    conf, labels, pred, metadata, pdf_file, aspect=10 / 16, scale=1.5, bins=15
 ):
-
     aspect = conf.get("eval.plot.aspect", aspect)
     scale = conf.get("eval.plot.scale", scale)
     aspect = conf.get("eval.accuracy.plot.aspect", aspect)
@@ -417,10 +433,11 @@ def accuracy(
     fig, ax = plt.subplots(1, 1, figsize=(scale * fig_w, scale * fig_h))
 
     x = metadata["s"]
-    y = metadata["T_sel"]
-    z = 1 - np.abs(labels - pred)  # accuracy
+    y = metadata["T_sel"] / 1000
+    # z = 1 - np.abs(labels - pred)  # "accuracy" that works for both labels
+    z = pred
 
-    binned, xitv, yitv = partition2d(x, y, z, bins)
+    binned, xitv, yitv, xmin, xmax, ymin, ymax = partition2d_logx(x, y, z, bins)
 
     boxes = []
     colours = []
@@ -431,14 +448,15 @@ def accuracy(
 
     pc = PatchCollection(boxes, rasterized=True)
     pc.set_array(np.array(colours))
+    # pc.set_clim(vmax=1)
     ax.add_collection(pc)
 
-    ax.set_title("Accuracy")
-    ax.set_xlabel("$s$")
-    ax.set_ylabel("$T_{sel}$ (years ago)")
+    ax.set_title("True positive rate")
+    ax.set_xlabel("$\\log_{10}s$")
+    ax.set_ylabel("$T_{sel}$ (kya)")
 
-    ax.set_xlim([0, bins * xitv])
-    ax.set_ylim([0, bins * yitv])
+    ax.set_xlim([xmin, xmax])
+    ax.set_ylim([ymin, ymax])
 
     fig.colorbar(pc)
     fig.tight_layout()
@@ -778,7 +796,12 @@ def hap_matrix(
 
 
 def ts_hap_matrix(
-    conf, data, pred, metadata, pdf_file, n_examples=10,
+    conf,
+    data,
+    pred,
+    metadata,
+    pdf_file,
+    n_examples=10,
 ):
     """
     Plot haplotype matrices for each modelspec. Plot up to n_examples for each.
@@ -816,7 +839,9 @@ def ts_hap_matrix(
 
 
 def vcf_hap_matrix(
-    conf, vcf_batch_gen, pdf_file,
+    conf,
+    vcf_batch_gen,
+    pdf_file,
 ):
     """
     Plot empirical haplotype/genotype matrices.
