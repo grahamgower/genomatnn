@@ -127,6 +127,8 @@ def do_eval(conf):
     train_data, train_labels, train_metadata, val_data, val_labels, val_metadata = data
 
     extra_sims = conf.get("sim.extra")
+    extra_labels = None
+    extra_metadata = None
     if extra_sims is not None and len(extra_sims) == 0:
         extra_sims = None
     if extra_sims is not None:
@@ -174,6 +176,7 @@ def do_eval(conf):
     with strategy.scope():
         train_pred = model.predict(train_data)
         val_pred = model.predict(val_data)
+        extra_pred = None
         if extra_sims is not None:
             extra_pred = model.predict(extra_data)
 
@@ -181,43 +184,20 @@ def do_eval(conf):
         raise NotImplementedError("Only binary predictions are supported")
     val_pred = val_pred[:, 0]
     train_pred = train_pred[:, 0]
-    if extra_sims is not None:
+    if extra_pred is not None:
         extra_pred = extra_pred[:, 0]
-
-    if conf.calibration is not None:
-        fit = calibrate.calibrate(conf, train_labels, train_metadata, train_pred)
-        val_pred_cal = fit.predict(val_pred)
-        if extra_sims is not None:
-            extra_pred_cal = fit.predict(extra_pred)
-    else:
-        val_pred_cal = val_pred
-        if extra_sims is not None:
-            extra_pred_cal = extra_pred
-
-    if extra_sims is None:
-        extra_pred_cal = None
-        extra_labels = None
-        extra_metadata = None
 
     hap_pdf = str(plot_dir / "genotype_matrices.pdf")
     plots.ts_hap_matrix(conf, val_data, val_pred, val_metadata, hap_pdf)
 
-    weights = conf.get("calibrate.weights")
-    val_upidx = calibrate.resample_indexes(val_metadata["modelspec"], weights)
-
-    resampled_val_labels = val_labels[val_upidx]
-    resampled_val_pred = val_pred[val_upidx]
-    resampled_val_pred_cal = val_pred_cal[val_upidx]
-    resampled_val_metadata = val_metadata[val_upidx]
-
     roc_pdf = str(plot_dir / "roc.pdf")
     plots.roc(
         conf=conf,
-        labels=resampled_val_labels,
-        pred=resampled_val_pred_cal,
-        metadata=resampled_val_metadata,
+        labels=val_labels,
+        pred=val_pred,
+        metadata=val_metadata,
         extra_labels=extra_labels,
-        extra_pred=extra_pred_cal,
+        extra_pred=extra_pred,
         extra_metadata=extra_metadata,
         pdf_file=roc_pdf,
     )
@@ -225,20 +205,26 @@ def do_eval(conf):
     accuracy_pdf = str(plot_dir / "accuracy.pdf")
     plots.accuracy(
         conf,
-        resampled_val_labels,
-        resampled_val_pred_cal,
-        resampled_val_metadata,
+        val_labels,
+        val_pred,
+        val_metadata,
         accuracy_pdf,
     )
 
     confusion_pdf = str(plot_dir / "confusion.pdf")
     plots.confusion(
         conf,
-        resampled_val_labels,
-        resampled_val_pred_cal,
-        resampled_val_metadata,
+        val_labels,
+        val_pred,
+        val_metadata,
         confusion_pdf,
     )
+
+    weights = conf.get("calibrate.weights")
+    val_upidx = calibrate.resample_indexes(val_metadata["modelspec"], weights)
+
+    resampled_val_labels = val_labels[val_upidx]
+    resampled_val_pred = val_pred[val_upidx]
 
     # Apply various calibrations to the prediction probabilties.
     upidx = calibrate.resample_indexes(train_metadata["modelspec"], weights)
@@ -514,10 +500,16 @@ def parse_args(args_list):
         return chrom, from_, to
 
     vcfplot_parser.add_argument(
-        "-r", "--regions-file", type=str, help="bcftools-like regions to be plotted.",
+        "-r",
+        "--regions-file",
+        type=str,
+        help="bcftools-like regions to be plotted.",
     )
     vcfplot_parser.add_argument(
-        "pdf_file", metavar="plot.pdf", type=str, help="Filename of the output file.",
+        "pdf_file",
+        metavar="plot.pdf",
+        type=str,
+        help="Filename of the output file.",
     )
     vcfplot_parser.add_argument(
         "regions",

@@ -136,7 +136,7 @@ def resample_indexes(a, weights=None, rng=None):
     # We'll resample to p[i] for each category i.
     p = (q[j] * w / w[j]).round().astype(int)
     assert p[j] == q[j]
-    logger.debug(f"Resampling with counts {p}.")
+    logger.debug(f"Resampling {unique} with counts {p}.")
 
     upidx = []
     for i in range(len(unique)):
