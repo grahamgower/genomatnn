@@ -46,7 +46,7 @@ def predictions_all_chr(ax, header, preds_by_chr, lengths_by_chr):
             preds[label],
             color=colours[i],
             marker="o",
-            s=10,
+            s=1,
             rasterized=True,
         )
 
@@ -57,14 +57,14 @@ def predictions_all_chr(ax, header, preds_by_chr, lengths_by_chr):
         lsum += chrlen
         i = (i + 1) % 2
 
-    chrindexes = list(range(len(chrnames)))
-    # chrindexes = list(range(4, len(chrnames)+1, 5))
+    # chrindexes = list(range(len(chrnames)))
+    chrindexes = list(range(1, 10, 2)) + [14, 19]
 
     # ax.set_title("CNN predictions")
     ax.set_xlabel("Chromosome")
     ax.set_ylabel(label)
     ax.set_xticks([chrmid[i] for i in chrindexes])
-    ax.set_xticklabels([chrnames[i] for i in chrindexes], rotation=90)
+    ax.set_xticklabels([chrnames[i] for i in chrindexes])  # , rotation=90)
     ax.set_ylim(-0.02, 1.02)
 
     bbox = dict(boxstyle="round", fc="lightblue", ec="black", lw=1, alpha=0.5)
