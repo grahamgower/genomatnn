@@ -407,10 +407,10 @@ def roc(
 
 def partition2d_logx(x, y, z, bins, precision=4):
     x = np.log10(x)
-    xmax = round(np.max(x), precision)
-    xmin = round(np.min(x), precision)
-    ymax = round(np.max(y), precision)
-    ymin = round(np.min(y), precision)
+    xmax = np.max(x) + 1e-9
+    xmin = np.min(x) - 1e-9
+    ymax = np.max(y)
+    ymin = np.min(y)
     xitv = round((xmax - xmin) / bins, precision)
     yitv = round((ymax - ymin) / bins, precision)
 
@@ -558,7 +558,7 @@ def confusion(conf, labels, pred, metadata, pdf_file, aspect=1, scale=1):
     confusion1(ax, cm_modelspecs, tranch_keys, short_modelspecs, cbar=False)
 
     if title:
-        fig.set_title(title)
+        ax.set_title(title)
     fig.tight_layout()
     pdf.savefig(figure=fig)
     plt.close(fig)
