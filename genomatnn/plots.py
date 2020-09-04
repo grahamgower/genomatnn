@@ -60,12 +60,28 @@ def predictions_all_chr(ax, header, preds_by_chr, lengths_by_chr):
     chrindexes = list(range(len(chrnames)))
     # chrindexes = list(range(4, len(chrnames)+1, 5))
 
-    ax.set_title("CNN predictions")
+    # ax.set_title("CNN predictions")
     ax.set_xlabel("Chromosome")
     ax.set_ylabel(label)
     ax.set_xticks([chrmid[i] for i in chrindexes])
     ax.set_xticklabels([chrnames[i] for i in chrindexes], rotation=90)
     ax.set_ylim(-0.02, 1.02)
+
+    bbox = dict(boxstyle="round", fc="lightblue", ec="black", lw=1, alpha=0.5)
+    if False:  # european
+        ax.annotate("BAZ2B", xy=(0.065 * lsum, 0.82), bbox=bbox)
+        ax.annotate("ZBTB20", xy=(0.22 * lsum, 0.75), bbox=bbox)
+        ax.annotate("TSNARE1", xy=(0.43 * lsum, 0.72), bbox=bbox)
+        ax.annotate("BCN2", xy=(0.56 * lsum, 0.7), bbox=bbox)
+        ax.annotate("ZNF486", xy=(0.85 * lsum, 0.88), bbox=bbox)
+        ax.annotate("WDR88", xy=(0.86 * lsum, 0.81), bbox=bbox)
+        ax.annotate("KCNQ2", xy=(0.965 * lsum, 0.74), bbox=bbox)
+    if False:  # papuan
+        ax.annotate("SLC30A9", xy=(0.15 * lsum, 0.96), bbox=bbox)
+        ax.annotate("TNFAIP3", xy=(0.33 * lsum, 0.96), bbox=bbox)
+        ax.annotate("SFRP4", xy=(0.453 * lsum, 0.92), bbox=bbox)
+        ax.annotate("RBM19", xy=(0.65 * lsum, 0.92), bbox=bbox)
+        ax.annotate("DGCR2", xy=(0.95 * lsum, 0.90), bbox=bbox)
 
     x1, x2 = ax.get_xlim()
     for p in (0.5,):
@@ -154,12 +170,12 @@ def predictions(conf, pred_file, pdf_file, aspect=9 / 16, scale=1.0, dpi=200):
     pdf.savefig(figure=fig, dpi=dpi)
     plt.close(fig)
 
-    for chrom, preds in preds_by_chr.items():
-        fig, ax = plt.subplots(1, 1, figsize=(fig_w, fig_h))
-        predictions_one_chr(ax, header, chrom, preds, chrlen[chrom])
-        fig.tight_layout()
-        pdf.savefig(figure=fig, dpi=dpi)
-        plt.close(fig)
+    # for chrom, preds in preds_by_chr.items():
+    #    fig, ax = plt.subplots(1, 1, figsize=(fig_w, fig_h))
+    #    predictions_one_chr(ax, header, chrom, preds, chrlen[chrom])
+    #    fig.tight_layout()
+    #    pdf.savefig(figure=fig, dpi=dpi)
+    #    plt.close(fig)
 
     pdf.close()
 
@@ -201,8 +217,8 @@ def roc(
     extra_pred,
     extra_metadata,
     pdf_file,
-    aspect=10 / 16,
-    scale=1.5,
+    aspect=10 / 32,
+    scale=1,
     inset=False,
 ):
     (
@@ -413,14 +429,14 @@ def partition2d_logx(x, y, z, bins, precision=4):
     return binned, xitv, yitv, xmin, xmax, ymin, ymax
 
 
-def accuracy(
-    conf, labels, pred, metadata, pdf_file, aspect=10 / 16, scale=1.5, bins=15
-):
+def accuracy(conf, labels, pred, metadata, pdf_file, aspect=3 / 4, scale=1, bins=15):
     aspect = conf.get("eval.plot.aspect", aspect)
     scale = conf.get("eval.plot.scale", scale)
     aspect = conf.get("eval.accuracy.plot.aspect", aspect)
     scale = conf.get("eval.accuracy.plot.scale", scale)
     bins = conf.get("eval.accuracy.plot.bins", bins)
+    title = conf.get("eval.plot.title", "True positive rate")
+    title = conf.get("eval.accuracy.plot.title", title)
 
     # Consider only "condition positive" cases.
     idx = np.where(labels == 1)
@@ -451,7 +467,8 @@ def accuracy(
     # pc.set_clim(vmax=1)
     ax.add_collection(pc)
 
-    ax.set_title("True positive rate")
+    if title:
+        ax.set_title(title)
     ax.set_xlabel("$\\log_{10}s$")
     ax.set_ylabel("$T_{sel}$ (kya)")
 
@@ -498,15 +515,17 @@ def confusion1(ax, cm, xticklabels, yticklabels, cbar=True, annotate=True):
                 )
 
 
-def confusion(conf, labels, pred, metadata, pdf_file, aspect=10 / 16, scale=1.5):
+def confusion(conf, labels, pred, metadata, pdf_file, aspect=1, scale=1):
     """
-    Confusion matrices.
+    Confusion matrix.
     """
 
     aspect = conf.get("eval.plot.aspect", aspect)
     scale = conf.get("eval.plot.scale", scale)
+    title = conf.get("eval.plot.title", "Confusion matrix")
     aspect = conf.get("eval.confusion.plot.aspect", aspect)
     scale = conf.get("eval.confusion.plot.scale", scale)
+    title = conf.get("eval.confusion.plot.title", title)
 
     false_modelspecs, true_modelspecs = list(conf.tranche.values())
     modelspecs = false_modelspecs + true_modelspecs
@@ -514,54 +533,32 @@ def confusion(conf, labels, pred, metadata, pdf_file, aspect=10 / 16, scale=1.5)
 
     n_labels = 2
     n_modelspecs = len(modelspecs)
-    n_fmodelspecs = len(false_modelspecs)
 
     pdf = PdfPages(pdf_file)
     fig_w, fig_h = plt.figaspect(aspect)
-    fig, axs = plt.subplots(
-        1, 2 if n_fmodelspecs > 1 else 1, figsize=(scale * fig_w, scale * fig_h)
-    )
-    if n_fmodelspecs == 1:
-        axs = [axs]
+    fig, ax = plt.subplots(1, 1, figsize=(scale * fig_w, scale * fig_h))
 
-    cm_labels = np.empty(shape=(n_labels, n_labels))
     cm_modelspecs = np.empty(shape=(n_labels, n_modelspecs))
 
-    # labels x labels
+    # labels x modelspecs
     for i in range(n_labels):
         idx = np.where(np.abs(pred - i) < 0.5)[0]
         n_pred = len(idx)
-        for j in range(n_labels):
-            n_true = len(np.where(labels[idx] == j)[0])
+        for j in range(n_modelspecs):
+            n_true = len(np.where(metadata["modelspec"][idx] == modelspecs[j])[0])
             if n_pred == 0:
-                cm_labels[i, j] = float("nan")
+                cm_modelspecs[i, j] = float("nan")
             else:
-                cm_labels[i, j] = n_true / n_pred
-
-    if n_fmodelspecs > 1:
-        # labels x modelspecs
-        for i in range(n_labels):
-            idx = np.where(np.abs(pred - i) < 0.5)[0]
-            n_pred = len(idx)
-            for j in range(n_modelspecs):
-                n_true = len(np.where(metadata["modelspec"][idx] == modelspecs[j])[0])
-                if n_pred == 0:
-                    cm_modelspecs[i, j] = float("nan")
-                else:
-                    cm_modelspecs[i, j] = n_true / n_pred
+                cm_modelspecs[i, j] = n_true / n_pred
 
     modelspec_pfx = longest_common_prefix(modelspecs)
     short_modelspecs = [mspec[len(modelspec_pfx) :] for mspec in modelspecs]
     tranch_keys = list(conf.tranche.keys())
 
-    confusion1(axs[0], cm_labels, tranch_keys, tranch_keys, cbar=False)
-    if n_fmodelspecs > 1:
-        confusion1(axs[1], cm_modelspecs, tranch_keys, short_modelspecs)
+    confusion1(ax, cm_modelspecs, tranch_keys, short_modelspecs, cbar=False)
 
-    if n_fmodelspecs > 1:
-        fig.suptitle("Confusion matrices")
-    else:
-        axs[0].set_title("Confusion matrix")
+    if title:
+        fig.set_title(title)
     fig.tight_layout()
     pdf.savefig(figure=fig)
     plt.close(fig)
