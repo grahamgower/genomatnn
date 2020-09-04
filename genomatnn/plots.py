@@ -406,6 +406,12 @@ def accuracy(
     scale = conf.get("eval.accuracy.plot.scale", scale)
     bins = conf.get("eval.accuracy.plot.bins", bins)
 
+    # Consider only "condition positive" cases.
+    idx = np.where(labels == 1)
+    labels = labels[idx]
+    pred = pred[idx]
+    metadata = metadata[idx]
+
     pdf = PdfPages(pdf_file)
     fig_w, fig_h = plt.figaspect(aspect)
     fig, ax = plt.subplots(1, 1, figsize=(scale * fig_w, scale * fig_h))
@@ -546,7 +552,7 @@ def confusion(conf, labels, pred, metadata, pdf_file, aspect=10 / 16, scale=1.5)
 
 def reliability(conf, labels, preds, pdf_file, aspect=10 / 16, scale=1.5, bins=10):
     """
-    Reliability plot., aka calibration curve.
+    Reliability plot, aka calibration curve.
     """
 
     # Nuisance parameters that set spacing in the histogram.
