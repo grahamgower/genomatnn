@@ -407,12 +407,12 @@ def roc(
 
 def partition2d_logx(x, y, z, bins, precision=4):
     x = np.log10(x)
-    xmax = np.max(x) + 1e-9
-    xmin = np.min(x) - 1e-9
-    ymax = np.max(y)
-    ymin = np.min(y)
-    xitv = round((xmax - xmin) / bins, precision)
-    yitv = round((ymax - ymin) / bins, precision)
+    xmax = round(np.max(x))
+    xmin = round(np.min(x))
+    ymax = round(np.max(y), 3)
+    ymin = round(np.min(y), 3)
+    xitv = (xmax - xmin) / bins
+    yitv = (ymax - ymin) / bins
 
     binned = collections.defaultdict(list)
     for xi, yi, zi in zip(x, y, z):
@@ -422,10 +422,10 @@ def partition2d_logx(x, y, z, bins, precision=4):
 
     ymin = ymin - (ymin % yitv)
     ymax = ymax - (ymax % yitv) + yitv
-    xmin = xmin - (xmin % xitv)
-    xmax = xmax - (xmax % xitv) + xitv
+    # xmin = xmin - (xmin % xitv)
+    # xmax = xmax - (xmax % xitv) + xitv
     # print(np.unique([xy[0] for xy in binned.keys()]))
-    # print(f"{xmin=}, {xmax=}, {xitv=}")
+    # print(f"xmin={xmin}, xmax={xmax}, xitv={xitv}")
     return binned, xitv, yitv, xmin, xmax, ymin, ymax
 
 
