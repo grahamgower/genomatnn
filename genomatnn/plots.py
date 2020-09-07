@@ -84,8 +84,6 @@ def predictions_all_chr(ax, header, preds_by_chr, lengths_by_chr):
         ax.annotate("DGCR2", xy=(0.95 * lsum, 0.90), bbox=bbox)
 
     x1, x2 = ax.get_xlim()
-    for p in (0.5,):
-        ax.hlines(p, x1, x2, linestyle="-", color="gray", lw=0.5, zorder=0)
     ax.set_xlim(x1, x2)
 
 
@@ -121,8 +119,6 @@ def predictions_one_chr(ax, header, chrom, preds, chrlen):
     ax.set_ylim(-0.02, 1.02)
 
     x1, x2 = ax.get_xlim()
-    for p in (0.5,):
-        ax.hlines(p, x1, x2, linestyle="-", color="gray", lw=0.5, zorder=0)
     ax.set_xlim(x1, x2)
 
     if chrom.startswith("chr"):

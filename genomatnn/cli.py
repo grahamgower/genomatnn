@@ -122,9 +122,8 @@ def do_train(conf):
 
 def do_eval(conf):
     cache = conf.dir / f"zarrcache_{conf.num_rows}-rows"
-    data = convert.load_data_cache(cache)
-    convert.check_data(data, conf.tranche, conf.num_rows, conf.num_cols)
-    train_data, train_labels, train_metadata, val_data, val_labels, val_metadata = data
+    val_keys = ["val/data", "val/labels", "val/metadata"]
+    val_data, val_labels, val_metadata = convert.load_data_cache(cache, val_keys)
 
     extra_sims = conf.get("sim.extra")
     extra_labels = None
@@ -221,6 +220,11 @@ def do_eval(conf):
 
     if conf.no_reliability:
         return
+
+    train_keys = ["train/data", "train/labels", "train/metadata"]
+    train_data, train_labels, train_metadata = convert.load_data_cache(
+        cache, train_keys
+    )
 
     logger.debug("Applying tensorflow to training data...")
     with strategy.scope():
