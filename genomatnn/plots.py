@@ -72,7 +72,7 @@ def predictions_all_chr(ax, header, preds_by_chr, lengths_by_chr):
         ax.annotate("BAZ2B", xy=(0.065 * lsum, 0.82), bbox=bbox)
         ax.annotate("ZBTB20", xy=(0.22 * lsum, 0.75), bbox=bbox)
         ax.annotate("TSNARE1", xy=(0.43 * lsum, 0.72), bbox=bbox)
-        ax.annotate("BCN2", xy=(0.56 * lsum, 0.7), bbox=bbox)
+        ax.annotate("BNC2", xy=(0.56 * lsum, 0.7), bbox=bbox)
         ax.annotate("ZNF486", xy=(0.85 * lsum, 0.88), bbox=bbox)
         ax.annotate("WDR88", xy=(0.86 * lsum, 0.81), bbox=bbox)
         ax.annotate("KCNQ2", xy=(0.965 * lsum, 0.74), bbox=bbox)
@@ -391,7 +391,7 @@ def roc(
     axs[1].set_ylabel("Precision: TP/(TP+FP)")
 
     # axs[2].set_title("Specificity vs. Negative Predictive Value")
-    axs[2].set_title("TNR-NPR")
+    axs[2].set_title("TNR-NPV")
     axs[2].set_xlabel("TNR: TN/(TN+FP)")
     axs[2].set_ylabel("NPV: TN/(TN+FN)")
 
