@@ -122,11 +122,12 @@ def do_train(conf):
 
 def do_eval(conf):
     cache = conf.dir / f"zarrcache_{conf.num_rows}-rows"
-    data = convert.load_data_cache(cache)
-    convert.check_data(data, conf.tranche, conf.num_rows, conf.num_cols)
-    train_data, train_labels, train_metadata, val_data, val_labels, val_metadata = data
+    val_keys = ["val/data", "val/labels", "val/metadata"]
+    val_data, val_labels, val_metadata = convert.load_data_cache(cache, val_keys)
 
     extra_sims = conf.get("sim.extra")
+    extra_labels = None
+    extra_metadata = None
     if extra_sims is not None and len(extra_sims) == 0:
         extra_sims = None
     if extra_sims is not None:
@@ -162,7 +163,6 @@ def do_eval(conf):
     plot_dir = pathlib.Path(conf.nn_hdf5_file[: -len(".hdf5")])
     plot_dir.mkdir(parents=True, exist_ok=True)
 
-    logger.debug("Applying tensorflow to validation data...")
     from genomatnn import tfstuff
     import tensorflow as tf
     from tensorflow.keras import models
@@ -172,35 +172,18 @@ def do_eval(conf):
     strategy = tf.distribute.MirroredStrategy()
 
     with strategy.scope():
-        train_pred = model.predict(train_data)
+        logger.debug("Applying tensorflow to validation data...")
         val_pred = model.predict(val_data)
+        extra_pred = None
         if extra_sims is not None:
+            logger.debug("Applying tensorflow to extra data...")
             extra_pred = model.predict(extra_data)
 
     if val_pred.shape[1] != 1:
         raise NotImplementedError("Only binary predictions are supported")
     val_pred = val_pred[:, 0]
-    train_pred = train_pred[:, 0]
-    if extra_sims is not None:
+    if extra_pred is not None:
         extra_pred = extra_pred[:, 0]
-
-    if conf.calibration is not None:
-        fit = calibrate.calibrate(conf, train_labels, train_metadata, train_pred)
-        val_pred_cal = fit.predict(val_pred)
-        if extra_sims is not None:
-            extra_pred_cal = fit.predict(extra_pred)
-    else:
-        val_pred_cal = val_pred
-        if extra_sims is not None:
-            extra_pred_cal = extra_pred
-
-    if extra_sims is None:
-        extra_pred_cal = None
-        extra_labels = None
-        extra_metadata = None
-
-    weights = conf.get("calibrate.weights")
-    val_upidx = calibrate.resample_indexes(val_metadata["modelspec"], weights)
 
     hap_pdf = str(plot_dir / "genotype_matrices.pdf")
     plots.ts_hap_matrix(conf, val_data, val_pred, val_metadata, hap_pdf)
@@ -208,31 +191,66 @@ def do_eval(conf):
     roc_pdf = str(plot_dir / "roc.pdf")
     plots.roc(
         conf=conf,
-        labels=val_labels[val_upidx],
-        pred=val_pred_cal[val_upidx],
-        metadata=val_metadata[val_upidx],
+        labels=val_labels,
+        pred=val_pred,
+        metadata=val_metadata,
         extra_labels=extra_labels,
-        extra_pred=extra_pred_cal,
+        extra_pred=extra_pred,
         extra_metadata=extra_metadata,
         pdf_file=roc_pdf,
     )
 
     accuracy_pdf = str(plot_dir / "accuracy.pdf")
-    plots.accuracy(conf, val_labels, val_pred_cal, val_metadata, accuracy_pdf)
+    plots.accuracy(
+        conf,
+        val_labels,
+        val_pred,
+        val_metadata,
+        accuracy_pdf,
+    )
 
     confusion_pdf = str(plot_dir / "confusion.pdf")
-    plots.confusion(conf, val_labels, val_pred_cal, val_metadata, confusion_pdf)
+    plots.confusion(
+        conf,
+        val_labels,
+        val_pred,
+        val_metadata,
+        confusion_pdf,
+    )
+
+    if conf.no_reliability:
+        return
+
+    train_keys = ["train/data", "train/labels", "train/metadata"]
+    train_data, train_labels, train_metadata = convert.load_data_cache(
+        cache, train_keys
+    )
+
+    logger.debug("Applying tensorflow to training data...")
+    with strategy.scope():
+        train_pred = model.predict(train_data)
+    train_pred = train_pred[:, 0]
+
+    weights = conf.get("calibrate.weights")
+    val_upidx = calibrate.resample_indexes(val_metadata["modelspec"], weights)
+
+    resampled_val_labels = val_labels[val_upidx]
+    resampled_val_pred = val_pred[val_upidx]
 
     # Apply various calibrations to the prediction probabilties.
     upidx = calibrate.resample_indexes(train_metadata["modelspec"], weights)
-    preds = [("Uncal.", val_pred[val_upidx])]
+    resampled_train_pred = train_pred[upidx]
+    resampled_train_labels = train_labels[upidx]
+    preds = [("Uncal.", resampled_val_pred)]
     for cc in calibrate.calibration_classes:
         label = cc.__name__
-        cc_pred = cc().fit(train_pred[upidx], train_labels[upidx]).predict(val_pred)
+        cc_pred = (
+            cc().fit(resampled_train_pred, resampled_train_labels).predict(val_pred)
+        )
         preds.append((label, cc_pred[val_upidx]))
 
     reliability_pdf = str(plot_dir / "reliability.pdf")
-    plots.reliability(conf, val_labels[val_upidx], preds, reliability_pdf)
+    plots.reliability(conf, resampled_val_labels, preds, reliability_pdf)
 
 
 def get_predictions(conf, pred_file, samples_file):
@@ -453,6 +471,13 @@ def parse_args(args_list):
     )
 
     eval_parser.add_argument(
+        "--no-reliability",
+        default=False,
+        action="store_true",
+        help="Don't evaluate calibration (thus skipping reliability plots).",
+    )
+
+    eval_parser.add_argument(
         "nn_hdf5_file",
         metavar="nn.hdf5",
         type=str,
@@ -493,10 +518,16 @@ def parse_args(args_list):
         return chrom, from_, to
 
     vcfplot_parser.add_argument(
-        "-r", "--regions-file", type=str, help="bcftools-like regions to be plotted.",
+        "-r",
+        "--regions-file",
+        type=str,
+        help="bcftools-like regions to be plotted.",
     )
     vcfplot_parser.add_argument(
-        "pdf_file", metavar="plot.pdf", type=str, help="Filename of the output file.",
+        "pdf_file",
+        metavar="plot.pdf",
+        type=str,
+        help="Filename of the output file.",
     )
     vcfplot_parser.add_argument(
         "regions",
@@ -530,8 +561,10 @@ def parse_args(args_list):
         args.conf.list = args.list
         args.conf.modelspec = args.modelspec
     elif args.subcommand == "train":
+        args.conf.no_reliability = False
         args.conf.convert_only = args.convert_only
     elif args.subcommand == "eval":
+        args.conf.no_reliability = args.no_reliability
         args.conf.nn_hdf5_file = args.nn_hdf5_file
     elif args.subcommand == "apply":
         args.conf.plot_only = args.plot_only

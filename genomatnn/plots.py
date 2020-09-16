@@ -42,7 +42,12 @@ def predictions_all_chr(ax, header, preds_by_chr, lengths_by_chr):
     for chrom, preds in preds_by_chr.items():
         midpos = lsum + (preds[start] + preds[end]) // 2
         ax.scatter(
-            midpos, preds[label], color=colours[i], marker="o", s=10, rasterized=True,
+            midpos,
+            preds[label],
+            color=colours[i],
+            marker="o",
+            s=1,
+            rasterized=True,
         )
 
         chrlen = lengths_by_chr[chrom]
@@ -52,16 +57,37 @@ def predictions_all_chr(ax, header, preds_by_chr, lengths_by_chr):
         lsum += chrlen
         i = (i + 1) % 2
 
-    ax.set_title("CNN predictions")
-    ax.set_xlabel("Genomic coordinate")
+    chrindexes = list(range(len(chrnames)))
+    if False:
+        # ugly workaround for humans so the labels can be read
+        chrindexes = list(range(1, 10, 2)) + [14, 19]
+
+    # ax.set_title("CNN predictions")
+    ax.set_xlabel("Chromosome")
     ax.set_ylabel(label)
-    ax.set_xticks(chrmid)
-    ax.set_xticklabels(chrnames, rotation=90)
+    ax.set_xticks([chrmid[i] for i in chrindexes])
+    ax.set_xticklabels([chrnames[i] for i in chrindexes], rotation=90)
+    # ax.set_ylim(-0.02, None)
     ax.set_ylim(-0.02, 1.02)
 
+    # ugly hardcoded annotation of peaks
+    bbox = dict(boxstyle="round", fc="lightblue", ec="black", lw=1, alpha=0.5)
+    if False:  # european
+        ax.annotate("BAZ2B", xy=(0.06 * lsum, 0.765), bbox=bbox)
+        ax.annotate("ZBTB20", xy=(0.22 * lsum, 0.745), bbox=bbox)
+        ax.annotate("TSNARE1", xy=(0.43 * lsum, 0.715), bbox=bbox)
+        ax.annotate("BNC2", xy=(0.555 * lsum, 0.66), bbox=bbox)
+        ax.annotate("ZNF486", xy=(0.84 * lsum, 0.76), bbox=bbox)
+        ax.annotate("WDR88", xy=(0.84 * lsum, 0.71), bbox=bbox)
+        ax.annotate("KCNQ2", xy=(0.97 * lsum, 0.715), bbox=bbox)
+    if False:  # papuan
+        ax.annotate("SLC30A9", xy=(0.15 * lsum, 0.283), bbox=bbox)
+        ax.annotate("TNFAIP3", xy=(0.322 * lsum, 0.29), bbox=bbox)
+        ax.annotate("SFRP4", xy=(0.455 * lsum, 0.215), bbox=bbox)
+        ax.annotate("RBM19", xy=(0.63 * lsum, 0.19), bbox=bbox)
+        ax.annotate("DGCR2", xy=(0.95 * lsum, 0.177), bbox=bbox)
+
     x1, x2 = ax.get_xlim()
-    for p in (0.5, 0.9):
-        ax.hlines(p, x1, x2, linestyle="--", color="gray", lw=0.5, zorder=0)
     ax.set_xlim(x1, x2)
 
 
@@ -75,7 +101,12 @@ def predictions_one_chr(ax, header, chrom, preds, chrlen):
     colours = plt.get_cmap("tab10").colors
     midpos = (preds[start] + preds[end]) // 2
     ax.scatter(
-        midpos, preds[label], color=colours[0], marker="o", s=10, rasterized=True,
+        midpos,
+        preds[label],
+        color=colours[0],
+        marker="o",
+        s=10,
+        rasterized=True,
     )
     ax.set_ylabel(label)
     ax.set_xlabel("Genomic coordinate")
@@ -92,8 +123,6 @@ def predictions_one_chr(ax, header, chrom, preds, chrlen):
     ax.set_ylim(-0.02, 1.02)
 
     x1, x2 = ax.get_xlim()
-    for p in (0.5, 0.9):
-        ax.hlines(p, x1, x2, linestyle="--", color="gray", lw=0.5, zorder=0)
     ax.set_xlim(x1, x2)
 
     if chrom.startswith("chr"):
@@ -141,12 +170,12 @@ def predictions(conf, pred_file, pdf_file, aspect=9 / 16, scale=1.0, dpi=200):
     pdf.savefig(figure=fig, dpi=dpi)
     plt.close(fig)
 
-    for chrom, preds in preds_by_chr.items():
-        fig, ax = plt.subplots(1, 1, figsize=(fig_w, fig_h))
-        predictions_one_chr(ax, header, chrom, preds, chrlen[chrom])
-        fig.tight_layout()
-        pdf.savefig(figure=fig, dpi=dpi)
-        plt.close(fig)
+    # for chrom, preds in preds_by_chr.items():
+    #    fig, ax = plt.subplots(1, 1, figsize=(fig_w, fig_h))
+    #    predictions_one_chr(ax, header, chrom, preds, chrlen[chrom])
+    #    fig.tight_layout()
+    #    pdf.savefig(figure=fig, dpi=dpi)
+    #    plt.close(fig)
 
     pdf.close()
 
@@ -188,8 +217,8 @@ def roc(
     extra_pred,
     extra_metadata,
     pdf_file,
-    aspect=10 / 16,
-    scale=1.5,
+    aspect=10 / 32,
+    scale=1,
     inset=False,
 ):
     (
@@ -256,7 +285,7 @@ def roc(
         axs[0].plot(fpr, tpr, color=c, linestyle=ls, label=label)
         if inset:
             ax0_inset.plot(fpr, tpr, color=c, linestyle=ls)
-        for i, ch in zip((50, 90), ("o", "x")):
+        for i, ch in zip((50,), ("o", "x")):
             if ch == "x":
                 ec = "none"
                 fc = c
@@ -281,7 +310,7 @@ def roc(
         axs[1].plot(recall, precision, color=c, linestyle=ls, label=label)
         # axs[1].scatter(
         #        recall, precision, marker=m, facecolor=c, edgecolor=c, label=label)
-        for i, ch in zip((50, 90), ("o", "x")):
+        for i, ch in zip((50,), ("o", "x")):
             if ch == "x":
                 ec = "none"
                 fc = c
@@ -303,7 +332,7 @@ def roc(
 
             axs[2].plot(tnr, npv, color=c, linestyle=ls, label=label)
             # axs[2].scatter(fnr, _for, marker=m, facecolor=c, edgecolor=c, label=label)
-            for i, ch in zip((50, 90), ("o", "x")):
+            for i, ch in zip((50,), ("o", "x")):
                 if ch == "x":
                     ec = "none"
                     fc = c
@@ -324,16 +353,6 @@ def roc(
                 markeredgecolor="k",
                 markersize=10,
                 label=f"Pr{{{condition_positive}}} > 0.50",
-            ),
-            Line2D(
-                [0],
-                [0],
-                marker="x",
-                c="none",
-                markerfacecolor="k",
-                markeredgecolor="k",
-                markersize=10,
-                label=f"Pr{{{condition_positive}}} > 0.90",
             ),
         ]
     )
@@ -376,7 +395,7 @@ def roc(
     axs[1].set_ylabel("Precision: TP/(TP+FP)")
 
     # axs[2].set_title("Specificity vs. Negative Predictive Value")
-    axs[2].set_title("TNR-NPR")
+    axs[2].set_title("TNR-NPV")
     axs[2].set_xlabel("TNR: TN/(TN+FP)")
     axs[2].set_ylabel("NPV: TN/(TN+FN)")
 
@@ -386,13 +405,14 @@ def roc(
     pdf.close()
 
 
-def partition2d(x, y, z, bins):
-    # Add a small value to the max, so that the max data point
-    # contributes to the last bin.
-    xmax = np.max(x) + 1e-9
-    ymax = np.max(y) + 1e-9
-    xitv = xmax / bins
-    yitv = ymax / bins
+def partition2d_logx(x, y, z, bins):
+    x = np.log10(x + 1e-9)
+    xmax = round(np.max(x))
+    xmin = round(np.min(x))
+    ymax = round(np.max(y), 3)
+    ymin = round(np.min(y), 3)
+    xitv = max((xmax - xmin) / bins, 1e-9)
+    yitv = max((ymax - ymin) / bins, 1e-9)
 
     binned = collections.defaultdict(list)
     for xi, yi, zi in zip(x, y, z):
@@ -400,28 +420,40 @@ def partition2d(x, y, z, bins):
         _y = yi - (yi % yitv)
         binned[(_x, _y)].append(zi)
 
-    return binned, xitv, yitv
+    ymin = ymin - (ymin % yitv)
+    ymax = ymax - (ymax % yitv) + yitv
+    # xmin = xmin - (xmin % xitv)
+    # xmax = xmax - (xmax % xitv) + xitv
+    # print(np.unique([xy[0] for xy in binned.keys()]))
+    # print(f"xmin={xmin}, xmax={xmax}, xitv={xitv}")
+    return binned, xitv, yitv, xmin, xmax, ymin, ymax
 
 
-def accuracy(
-    conf, labels, pred, metadata, pdf_file, aspect=10 / 16, scale=1.5, bins=20
-):
-
+def accuracy(conf, labels, pred, metadata, pdf_file, aspect=3 / 4, scale=1, bins=15):
     aspect = conf.get("eval.plot.aspect", aspect)
     scale = conf.get("eval.plot.scale", scale)
     aspect = conf.get("eval.accuracy.plot.aspect", aspect)
     scale = conf.get("eval.accuracy.plot.scale", scale)
     bins = conf.get("eval.accuracy.plot.bins", bins)
+    title = conf.get("eval.plot.title", "True positive rate")
+    title = conf.get("eval.accuracy.plot.title", title)
+
+    # Consider only "condition positive" cases.
+    idx = np.where(labels == 1)
+    labels = labels[idx]
+    pred = pred[idx]
+    metadata = metadata[idx]
 
     pdf = PdfPages(pdf_file)
     fig_w, fig_h = plt.figaspect(aspect)
     fig, ax = plt.subplots(1, 1, figsize=(scale * fig_w, scale * fig_h))
 
     x = metadata["s"]
-    y = metadata["T_sel"]
-    z = 1 - np.abs(labels - pred)  # accuracy
+    y = metadata["T_sel"] / 1000
+    # z = 1 - np.abs(labels - pred)  # "accuracy" that works for both labels
+    z = pred
 
-    binned, xitv, yitv = partition2d(x, y, z, bins)
+    binned, xitv, yitv, xmin, xmax, ymin, ymax = partition2d_logx(x, y, z, bins)
 
     boxes = []
     colours = []
@@ -432,14 +464,16 @@ def accuracy(
 
     pc = PatchCollection(boxes, rasterized=True)
     pc.set_array(np.array(colours))
+    # pc.set_clim(vmax=1)
     ax.add_collection(pc)
 
-    ax.set_title("Accuracy")
-    ax.set_xlabel("$s$")
-    ax.set_ylabel("$T_{sel}$ (years ago)")
+    if title:
+        ax.set_title(title)
+    ax.set_xlabel("$\\log_{10}s$")
+    ax.set_ylabel("$T_{sel}$ (kya)")
 
-    ax.set_xlim([0, bins * xitv])
-    ax.set_ylim([0, bins * yitv])
+    ax.set_xlim([xmin, xmax])
+    ax.set_ylim([ymin, ymax])
 
     fig.colorbar(pc)
     fig.tight_layout()
@@ -481,15 +515,17 @@ def confusion1(ax, cm, xticklabels, yticklabels, cbar=True, annotate=True):
                 )
 
 
-def confusion(conf, labels, pred, metadata, pdf_file, aspect=10 / 16, scale=1.5):
+def confusion(conf, labels, pred, metadata, pdf_file, aspect=1, scale=1):
     """
-    Confusion matrices.
+    Confusion matrix.
     """
 
     aspect = conf.get("eval.plot.aspect", aspect)
     scale = conf.get("eval.plot.scale", scale)
+    title = conf.get("eval.plot.title", "Confusion matrix")
     aspect = conf.get("eval.confusion.plot.aspect", aspect)
     scale = conf.get("eval.confusion.plot.scale", scale)
+    title = conf.get("eval.confusion.plot.title", title)
 
     false_modelspecs, true_modelspecs = list(conf.tranche.values())
     modelspecs = false_modelspecs + true_modelspecs
@@ -497,54 +533,32 @@ def confusion(conf, labels, pred, metadata, pdf_file, aspect=10 / 16, scale=1.5)
 
     n_labels = 2
     n_modelspecs = len(modelspecs)
-    n_fmodelspecs = len(false_modelspecs)
 
     pdf = PdfPages(pdf_file)
     fig_w, fig_h = plt.figaspect(aspect)
-    fig, axs = plt.subplots(
-        1, 2 if n_fmodelspecs > 1 else 1, figsize=(scale * fig_w, scale * fig_h)
-    )
-    if n_fmodelspecs == 1:
-        axs = [axs]
+    fig, ax = plt.subplots(1, 1, figsize=(scale * fig_w, scale * fig_h))
 
-    cm_labels = np.empty(shape=(n_labels, n_labels))
     cm_modelspecs = np.empty(shape=(n_labels, n_modelspecs))
 
-    # labels x labels
+    # labels x modelspecs
     for i in range(n_labels):
         idx = np.where(np.abs(pred - i) < 0.5)[0]
         n_pred = len(idx)
-        for j in range(n_labels):
-            n_true = len(np.where(labels[idx] == j)[0])
+        for j in range(n_modelspecs):
+            n_true = len(np.where(metadata["modelspec"][idx] == modelspecs[j])[0])
             if n_pred == 0:
-                cm_labels[i, j] = float("nan")
+                cm_modelspecs[i, j] = float("nan")
             else:
-                cm_labels[i, j] = n_true / n_pred
-
-    if n_fmodelspecs > 1:
-        # labels x modelspecs
-        for i in range(n_labels):
-            idx = np.where(np.abs(pred - i) < 0.5)[0]
-            n_pred = len(idx)
-            for j in range(n_modelspecs):
-                n_true = len(np.where(metadata["modelspec"][idx] == modelspecs[j])[0])
-                if n_pred == 0:
-                    cm_modelspecs[i, j] = float("nan")
-                else:
-                    cm_modelspecs[i, j] = n_true / n_pred
+                cm_modelspecs[i, j] = n_true / n_pred
 
     modelspec_pfx = longest_common_prefix(modelspecs)
     short_modelspecs = [mspec[len(modelspec_pfx) :] for mspec in modelspecs]
     tranch_keys = list(conf.tranche.keys())
 
-    confusion1(axs[0], cm_labels, tranch_keys, tranch_keys, cbar=False)
-    if n_fmodelspecs > 1:
-        confusion1(axs[1], cm_modelspecs, tranch_keys, short_modelspecs)
+    confusion1(ax, cm_modelspecs, tranch_keys, short_modelspecs, cbar=False)
 
-    if n_fmodelspecs > 1:
-        fig.suptitle("Confusion matrices")
-    else:
-        axs[0].set_title("Confusion matrix")
+    if title:
+        ax.set_title(title)
     fig.tight_layout()
     pdf.savefig(figure=fig)
     plt.close(fig)
@@ -553,7 +567,7 @@ def confusion(conf, labels, pred, metadata, pdf_file, aspect=10 / 16, scale=1.5)
 
 def reliability(conf, labels, preds, pdf_file, aspect=10 / 16, scale=1.5, bins=10):
     """
-    Reliability plot., aka calibration curve.
+    Reliability plot, aka calibration curve.
     """
 
     # Nuisance parameters that set spacing in the histogram.
@@ -779,7 +793,12 @@ def hap_matrix(
 
 
 def ts_hap_matrix(
-    conf, data, pred, metadata, pdf_file, n_examples=10,
+    conf,
+    data,
+    pred,
+    metadata,
+    pdf_file,
+    n_examples=10,
 ):
     """
     Plot haplotype matrices for each modelspec. Plot up to n_examples for each.
@@ -817,7 +836,9 @@ def ts_hap_matrix(
 
 
 def vcf_hap_matrix(
-    conf, vcf_batch_gen, pdf_file,
+    conf,
+    vcf_batch_gen,
+    pdf_file,
 ):
     """
     Plot empirical haplotype/genotype matrices.

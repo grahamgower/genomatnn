@@ -141,6 +141,21 @@ def random_autosomal_chunk(species, genetic_map, length, seed):
     return contig
 
 
+def KimDFE():
+    """
+    Return neutral and negative MutationType()s representing a human DFE.
+    Kim et al. (2018), p.23, http://doi.org/10.1371/journal.pgen.1007741
+    """
+    neutral = stdpopsim.ext.MutationType(weight=1.0)
+    gamma_shape = 0.186  # shape
+    gamma_mean = -0.01314833  # expected value
+    h = 0.5/(1-7071.07*gamma_mean)  # dominance coefficient
+    negative = stdpopsim.ext.MutationType(
+            weight=2.31, dominance_coeff=h, distribution_type="g",
+            distribution_args=[gamma_mean, gamma_shape])
+    return [neutral, negative]
+
+
 def hominin_composite():
     id = "HomininComposite_4G20"
     description = "Four population out of Africa with Neandertal admixture"
@@ -301,7 +316,7 @@ def homsap_composite_Nea_to_CEU(
 
     mutation_types = []
     if dfe:
-        mutation_types.extend(stdpopsim.ext.KimDFE())
+        mutation_types.extend(KimDFE())
     positive = stdpopsim.ext.MutationType(convert_to_substitution=False)
     mutation_types.append(positive)
     mut_id = len(mutation_types)
@@ -412,7 +427,7 @@ def homsap_composite_Sweep_CEU(
 
     mutation_types = []
     if dfe:
-        mutation_types.extend(stdpopsim.ext.KimDFE())
+        mutation_types.extend(KimDFE())
     positive = stdpopsim.ext.MutationType(convert_to_substitution=False)
     mutation_types.append(positive)
     mut_id = len(mutation_types)
@@ -505,13 +520,18 @@ def homsap_papuans_model(length, sample_counts, seed):
 def generic_Neutral(model, contig, samples, seed, engine="slim", **kwargs):
     engine = stdpopsim.get_engine(engine)
     ts = engine.simulate(
-        model, contig, samples, seed=seed, slim_burn_in=0.1, slim_scaling_factor=10,
+        model,
+        contig,
+        samples,
+        seed=seed,
+        slim_burn_in=0.1,
+        slim_scaling_factor=10,
     )
     return ts, (contig.origin, 0, 0, 0)
 
 
 def homsap_DFE(model, contig, samples, seed, **kwargs):
-    mutation_types = stdpopsim.ext.KimDFE()
+    mutation_types = KimDFE()
     engine = stdpopsim.get_engine("slim")
     ts = engine.simulate(
         model,
@@ -548,7 +568,7 @@ def homsap_papuans_AI_Den_to_Papuan(
 
     mutation_types = []
     if dfe:
-        mutation_types.extend(stdpopsim.ext.KimDFE())
+        mutation_types.extend(KimDFE())
     positive = stdpopsim.ext.MutationType(convert_to_substitution=False)
     mutation_types.append(positive)
     mut_id = len(mutation_types)
@@ -680,7 +700,7 @@ def homsap_papuans_Sweep_Papuan(
 
     mutation_types = []
     if dfe:
-        mutation_types.extend(stdpopsim.ext.KimDFE())
+        mutation_types.extend(KimDFE())
     positive = stdpopsim.ext.MutationType(convert_to_substitution=False)
     mutation_types.append(positive)
     mut_id = len(mutation_types)
