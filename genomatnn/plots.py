@@ -57,31 +57,35 @@ def predictions_all_chr(ax, header, preds_by_chr, lengths_by_chr):
         lsum += chrlen
         i = (i + 1) % 2
 
-    # chrindexes = list(range(len(chrnames)))
-    chrindexes = list(range(1, 10, 2)) + [14, 19]
+    chrindexes = list(range(len(chrnames)))
+    if False:
+        # ugly workaround for humans so the labels can be read
+        chrindexes = list(range(1, 10, 2)) + [14, 19]
 
     # ax.set_title("CNN predictions")
     ax.set_xlabel("Chromosome")
     ax.set_ylabel(label)
     ax.set_xticks([chrmid[i] for i in chrindexes])
-    ax.set_xticklabels([chrnames[i] for i in chrindexes])  # , rotation=90)
+    ax.set_xticklabels([chrnames[i] for i in chrindexes], rotation=90)
+    # ax.set_ylim(-0.02, None)
     ax.set_ylim(-0.02, 1.02)
 
+    # ugly hardcoded annotation of peaks
     bbox = dict(boxstyle="round", fc="lightblue", ec="black", lw=1, alpha=0.5)
     if False:  # european
-        ax.annotate("BAZ2B", xy=(0.065 * lsum, 0.82), bbox=bbox)
-        ax.annotate("ZBTB20", xy=(0.22 * lsum, 0.75), bbox=bbox)
-        ax.annotate("TSNARE1", xy=(0.43 * lsum, 0.72), bbox=bbox)
-        ax.annotate("BNC2", xy=(0.56 * lsum, 0.7), bbox=bbox)
-        ax.annotate("ZNF486", xy=(0.85 * lsum, 0.88), bbox=bbox)
-        ax.annotate("WDR88", xy=(0.86 * lsum, 0.81), bbox=bbox)
-        ax.annotate("KCNQ2", xy=(0.965 * lsum, 0.74), bbox=bbox)
+        ax.annotate("BAZ2B", xy=(0.06 * lsum, 0.765), bbox=bbox)
+        ax.annotate("ZBTB20", xy=(0.22 * lsum, 0.745), bbox=bbox)
+        ax.annotate("TSNARE1", xy=(0.43 * lsum, 0.715), bbox=bbox)
+        ax.annotate("BNC2", xy=(0.555 * lsum, 0.66), bbox=bbox)
+        ax.annotate("ZNF486", xy=(0.84 * lsum, 0.76), bbox=bbox)
+        ax.annotate("WDR88", xy=(0.84 * lsum, 0.71), bbox=bbox)
+        ax.annotate("KCNQ2", xy=(0.97 * lsum, 0.715), bbox=bbox)
     if False:  # papuan
-        ax.annotate("SLC30A9", xy=(0.15 * lsum, 0.96), bbox=bbox)
-        ax.annotate("TNFAIP3", xy=(0.33 * lsum, 0.96), bbox=bbox)
-        ax.annotate("SFRP4", xy=(0.453 * lsum, 0.92), bbox=bbox)
-        ax.annotate("RBM19", xy=(0.65 * lsum, 0.92), bbox=bbox)
-        ax.annotate("DGCR2", xy=(0.95 * lsum, 0.90), bbox=bbox)
+        ax.annotate("SLC30A9", xy=(0.15 * lsum, 0.283), bbox=bbox)
+        ax.annotate("TNFAIP3", xy=(0.322 * lsum, 0.29), bbox=bbox)
+        ax.annotate("SFRP4", xy=(0.455 * lsum, 0.215), bbox=bbox)
+        ax.annotate("RBM19", xy=(0.63 * lsum, 0.19), bbox=bbox)
+        ax.annotate("DGCR2", xy=(0.95 * lsum, 0.177), bbox=bbox)
 
     x1, x2 = ax.get_xlim()
     ax.set_xlim(x1, x2)
@@ -401,14 +405,14 @@ def roc(
     pdf.close()
 
 
-def partition2d_logx(x, y, z, bins, precision=4):
-    x = np.log10(x)
+def partition2d_logx(x, y, z, bins):
+    x = np.log10(x + 1e-9)
     xmax = round(np.max(x))
     xmin = round(np.min(x))
     ymax = round(np.max(y), 3)
     ymin = round(np.min(y), 3)
-    xitv = (xmax - xmin) / bins
-    yitv = (ymax - ymin) / bins
+    xitv = max((xmax - xmin) / bins, 1e-9)
+    yitv = max((ymax - ymin) / bins, 1e-9)
 
     binned = collections.defaultdict(list)
     for xi, yi, zi in zip(x, y, z):
