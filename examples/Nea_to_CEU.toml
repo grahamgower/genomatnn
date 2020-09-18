@@ -37,8 +37,7 @@ AI = [
 
 [sim.extra]
 # Additional modelspecs against which the trained model will be evaluated.
-# Comment this out if not desired.
-DFE = ["HomSap/HomininComposite_4G20/DFE"]
+#DFE = ["HomSap/HomininComposite_4G20/DFE"]
 
 [vcf]
 # Path to the (indexed) VCF or BCF file(s).
@@ -89,7 +88,7 @@ model = "cnn"
 # given here.
 modelspec = "HomSap/HomininComposite_4G20/AI/Nea_to_CEU"
 pop = "CEU"
-AF = 0.25
+AF = 0.05
 
 [train.cnn]
 # Hyperparameters of the network architecture.
@@ -111,8 +110,8 @@ dense_size = 0  # size of each dense layer
 # simulations for the category with the lowest weight, and upsample
 # those with higher weights (sampling with replacement).
 "HomSap/HomininComposite_4G20/Neutral/slim" = 1
-"HomSap/HomininComposite_4G20/Sweep/CEU" = 0.1
-"HomSap/HomininComposite_4G20/AI/Nea_to_CEU" = 0.02
+"HomSap/HomininComposite_4G20/Sweep/CEU" = 1
+"HomSap/HomininComposite_4G20/AI/Nea_to_CEU" = 1
 
 [apply]
 # Application to empirical data.
