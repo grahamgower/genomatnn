@@ -457,7 +457,7 @@ def parse_args(args_list):
         "modelspec",
         nargs="?",
         default=None,
-        help="Model specification to simulated. "
+        help="Model specification to simulate. "
         "If not provided, modelspecs from the config file will be simulated",
     )
 
