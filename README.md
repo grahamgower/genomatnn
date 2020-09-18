@@ -155,7 +155,7 @@ previous step(s). The most extreme example of this, is that the number of
 individuals that are simulated in the first `sim` step must match the
 empirical data used in the final `apply` step. While it may at first appear
 counterintuitive, this means that to do any simulations, we must first
-describe which individuals will be used from in the vcf(s), and how these
+describe which individuals will be used from the vcf(s), and how these
 relate to the populations that will be simulated.
 The configuration file uses the [toml](https://github.com/toml-lang/toml)
 format, and we provide an extensively commented [example configuration](examples/Nea_to_CEU.toml).
@@ -200,7 +200,7 @@ This vcf file contains genotype calls for a 1 Mbp region on chr22, for the
 YRI and CEU populations from the 1000 genomes project, plus the Altai and
 Vindija Neanderthals.
 
-Scrolling down the config file, we see the `[pop]` setion, which describes
+Scrolling down the config file, we see the `[pop]` section, which describes
 which individuals in the vcf file correspond to which population labels.
 The possible population labels here are defined by the demographic model
 that will be simulated.
@@ -240,17 +240,17 @@ For each of these demographic models, there are multiple lines, which
 genomatnn refers to as `modelspec`s. These describe the different ways we can
 simulate a given demographic model. We will use the following modelspecs:
  * `HomSap/HomininComposite_4G20/Neutral/slim`: only neutral mutations
-   are simulated, and SLiM will be used for the simulation (rather
-   than msprime).
+    are simulated, and SLiM will be used for the simulation (rather
+    than msprime).
  * `HomSap/HomininComposite_4G20/AI/Nea_to_CEU`: adaptive introgression
-    where a mutation drawn in Neanderthals, passed to Europeans via
+    where a mutation is drawn in Neanderthals, passed to Europeans via
     admixture, and is then positively selected in Europeans.
  * `HomSap/HomininComposite_4G20/Sweep/CEU`: a selective sweep in Europeans.
  
- In our configuration file, we see that these modelspecs are used in the
- `[sim.tranche]` section.
- ```
- [sim.tranche]
+In our configuration file, we see that these modelspecs are used in the
+`[sim.tranche]` section.
+```
+[sim.tranche]
 # The labels and modelspec(s) for each tranche. The network will be trained to
 # classify data as coming from one of these tranches. Each tranche consists of
 # a list of simulation modelspecs.
@@ -278,7 +278,7 @@ defined in our config file.
 $ genomatnn sim -n 1000 Nea_to_CEU.toml
 ```
 
-While 1000 simulations are not enough for accurate preditions (above 10,000
+While 1000 simulations are not enough for accurate predictions (above 10,000
 for each modelspec might be reasonable, although more is better), we can
 expect that a CNN will learn from this quantity of data.
 By default, the above command will use all available CPU cores on the
@@ -330,7 +330,7 @@ This command will search for `*.trees` files in the folder hierarchy
 corresponding to the modelspecs listed in the config file. It will
 split your data into training/validation sets (with approximate 90/10 split),
 convert each file into a genotype matrix, resize, sort the resized "haplotypes",
-and store the result into a Zarr cache. This process can is done in parallel
+and store the result into a Zarr cache. This process is done in parallel
 by default, which can be changed with the `-j` command. If you have a slow
 disk, then it might be quicker to run this with only 1 process. For fast disks,
 parallelism really helps. Your milage may vary. Once complete, you should
