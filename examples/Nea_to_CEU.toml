@@ -53,7 +53,7 @@ DFE = ["HomSap/HomininComposite_4G20/DFE"]
 # Only diploid autosomes are supported.
 chr = [ 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19,
 	20, 21, 22 ]
-file = "misc/vcf/HGDP.1000g.archaic.${chr}.bcf"
+file = "1000g.Nea.${chr}.bcf"
 # Specify if genotypes should be treated as phased or unphased.
 # Note: mixed phasing is not supported, and '|' or '/' phase indicators in
 # the VCF genotype field are ignored.
@@ -67,8 +67,8 @@ phased = true
 # genotype matrices. It's recommended for the donor and recipient populations
 # to be adjacent in the genotype matrices!
 Nea = ["AltaiNeandertal", "Vindija33.19"]
-CEU = "misc/CEU.indlist"
-YRI = "misc/YRI.indlist"
+CEU = "CEU.indlist"
+YRI = "YRI.indlist"
 
 [train]
 # Resize haplotypes in each genotype matrix using this many bins.

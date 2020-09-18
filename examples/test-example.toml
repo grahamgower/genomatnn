@@ -21,12 +21,12 @@ AI = [
 
 [vcf]
 chr = [ 22 ]
-file = "examples/HGDP.1000g.archaic.${chr}.1mb.vcf.gz"
+file = "examples/1000g.Nea.${chr}.1mb.vcf.gz"
 
 [pop]
 Nea = ["AltaiNeandertal", "Vindija33.19"]
-CEU = "misc/CEU.indlist"
-YRI = "misc/YRI.indlist"
+CEU = "examples/CEU.indlist"
+YRI = "examples/YRI.indlist"
 
 [train]
 train_frac = 0.5

@@ -6,7 +6,7 @@ from genomatnn import vcf
 
 
 class TestVCF(unittest.TestCase):
-    vcf_file = "examples/HGDP.1000g.archaic.22.1mb.vcf.gz"
+    vcf_file = "examples/1000g.Nea.22.1mb.vcf.gz"
     vcf_chrom = "22"
     vcf_start = 21000001
     vcf_end = 22000000

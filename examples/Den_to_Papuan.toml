@@ -23,7 +23,7 @@ AI = [
 [vcf]
 chr = [ 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19,
 	20, 21, 22 ]
-file = "misc/vcf/HGDP.1000g.archaic.IGDP.${chr}.bcf"
+file = "1000g.archaic.IGDP.${chr}.bcf"
 phased = false
 
 [pop]
@@ -32,8 +32,8 @@ DenA = ["Denisova"]
 # Although the label 'Papuan' has been used here, the IGDP dataset includes
 # non-Papuan populations from throughout Island South Sast Asia, and the
 # population label 'Melanesian' would have been a better choice here.
-Papuan = "misc/IGDP_OCEANIA.indlist"
-YRI = "misc/YRI.indlist"
+Papuan = "IGDP.indlist"
+YRI = "YRI.indlist"
 
 [train]
 num_rows = 256
