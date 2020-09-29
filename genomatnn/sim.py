@@ -518,14 +518,16 @@ def homsap_papuans_model(length, sample_counts, seed):
 
 
 def generic_Neutral(model, contig, samples, seed, engine="slim", **kwargs):
+    kwargs = dict()
+    if engine == "slim":
+        kwargs.update(slim_burn_in=0.1, slim_scaling_factor=10)
     engine = stdpopsim.get_engine(engine)
     ts = engine.simulate(
         model,
         contig,
         samples,
         seed=seed,
-        slim_burn_in=0.1,
-        slim_scaling_factor=10,
+        **kwargs
     )
     return ts, (contig.origin, 0, 0, 0)
 
