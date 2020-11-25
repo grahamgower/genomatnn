@@ -172,7 +172,7 @@ $ cd ai_example
 ```
 
 Copy the `Nea_to_CEU.toml`, `1000g.Nea.22.1mb.vcf.gz`,
-and `1000g.Nea.22.1mb.vcf.gz.csi` files from the `misc` folder of
+and `1000g.Nea.22.1mb.vcf.gz.csi` files from the `examples` folder of
 your cloned genomatnn repository. We will also need the `YRI.indlist` and
 `CEU.indlist` files, which list the vcf's individual IDs for the YRI and
 CEU populations.
