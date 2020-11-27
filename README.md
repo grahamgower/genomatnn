@@ -13,6 +13,12 @@ and the instructions below use [conda](https://docs.conda.io/en/latest/miniconda
 to create such an environment. We assume you are using `Linux`. Other platforms
 may work, but these have not been tested.
 
+0. Install bcftools. Genomatnn uses the `bcftools` command line program to
+   read `vcf` and `bcf` files. The tests also use `bgzip`, which is packaged
+   with bcftools. Bcftools is most easily installed via your OS package manager,
+   or refer to the [htslib](http://www.htslib.org/) website for other
+   installation options.
+
 1. Install SLiM. Refer to the instructions on the
    [SLiM website](https://messerlab.org/slim/), or in the manual, to install
    the command line `slim` program. The SLiM GUI is not required.
