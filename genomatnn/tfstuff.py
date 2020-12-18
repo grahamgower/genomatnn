@@ -237,27 +237,51 @@ def get_nn_model(nn_model, input_shape, output_shape, params):
     return model
 
 
-def train(conf, train_data, train_labels, val_data, val_labels):
+def train(conf, train_x, train_y, val_x, val_y):
     tf_config(conf.parallelism)
     # Add "channels" dimension of size 1. We don't use channels.
-    train_data = np.expand_dims(train_data, axis=-1)
-    val_data = np.expand_dims(val_data, axis=-1)
+    train_x = np.expand_dims(train_x, axis=-1)
+    val_x = np.expand_dims(val_x, axis=-1)
 
     strategy = tf.distribute.MirroredStrategy()
     with strategy.scope():
-        model = get_nn_model(
-            conf.nn_model, train_data.shape[1:], 1, conf.nn_model_params
-        )
+        model = get_nn_model(conf.nn_model, train_x.shape[1:], 1, conf.nn_model_params)
     if conf.verbose:
         model.summary()
+
+    train_data = tf.data.Dataset.from_tensor_slices((train_x, train_y))
+    val_data = tf.data.Dataset.from_tensor_slices((val_x, val_y))
+    train_data = train_data.batch(conf.train_batch_size)
+    val_data = val_data.batch(conf.train_batch_size)
+
+    # Set the autoshart policy to make tensorflow shutup.
+    options = tf.data.Options()
+    options.experimental_distribute.auto_shard_policy = (
+        tf.data.experimental.AutoShardPolicy.DATA
+    )
+    train_data = train_data.with_options(options)
+    val_data = val_data.with_options(options)
+
     history = model.fit(
         train_data,
-        train_labels,
         epochs=conf.train_epochs,
-        batch_size=conf.train_batch_size,
-        validation_data=(val_data, val_labels),
+        validation_data=val_data,
         verbose=1,
     )
     logger.info(f"Saving model to {conf.nn_hdf5_file}")
     model.save(conf.nn_hdf5_file)
     return history
+
+
+def predict(conf, model, input_data):
+    """
+    Wrapper around model.predict() that explicitly sets the AutoShartPolicy.
+    """
+    data = tf.data.Dataset.from_tensor_slices(input_data)
+    data = data.batch(conf.train_batch_size)
+    options = tf.data.Options()
+    options.experimental_distribute.auto_shard_policy = (
+        tf.data.experimental.AutoShardPolicy.DATA
+    )
+    data = data.with_options(options)
+    return model.predict(data)

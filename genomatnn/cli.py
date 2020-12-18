@@ -173,11 +173,11 @@ def do_eval(conf):
 
     with strategy.scope():
         logger.debug("Applying tensorflow to validation data...")
-        val_pred = model.predict(val_data)
+        val_pred = tfstuff.predict(conf, model, val_data)
         extra_pred = None
         if extra_sims is not None:
             logger.debug("Applying tensorflow to extra data...")
-            extra_pred = model.predict(extra_data)
+            extra_pred = tfstuff.predict(conf, model, extra_data)
 
     if val_pred.shape[1] != 1:
         raise NotImplementedError("Only binary predictions are supported")
@@ -228,7 +228,7 @@ def do_eval(conf):
 
     logger.debug("Applying tensorflow to training data...")
     with strategy.scope():
-        train_pred = model.predict(train_data)
+        train_pred = tfstuff.predict(conf, model, train_data)
     train_pred = train_pred[:, 0]
 
     weights = conf.get("calibrate.weights")
@@ -272,7 +272,7 @@ def get_predictions(conf, pred_file, samples_file):
         convert.check_data(data, conf.tranche, conf.num_rows, conf.num_cols)
         train_data, train_labels, train_metadata, _, _, _ = data
         with strategy.scope():
-            train_pred = model.predict(train_data)
+            train_pred = tfstuff.predict(conf, model, train_data)
         if train_pred.shape[1] != 1:
             raise NotImplementedError("Only binary predictions are supported")
         train_pred = train_pred[:, 0]
@@ -301,15 +301,14 @@ def get_predictions(conf, pred_file, samples_file):
     label = list(conf.tranche.keys())[1]
     with open(pred_file, "w") as f:
         print("chrom", "start", "end", f"Pr{{{label}}}", sep="\t", file=f)
-        with strategy.scope():
-            for coords, vcf_data in vcf_batch_gen:
-                predictions = model.predict_on_batch(vcf_data)
-                if conf.calibration is not None:
-                    # Calibrate the model predictions.
-                    predictions = cal.predict(predictions)
-                for (chrom, start, end), pred in zip(coords, predictions):
-                    printable_pred = [format(p, ".8f") for p in pred]
-                    print(chrom, start, end, *printable_pred, sep="\t", file=f)
+        for coords, vcf_data in vcf_batch_gen:
+            predictions = model.predict_on_batch(vcf_data)
+            if conf.calibration is not None:
+                # Calibrate the model predictions.
+                predictions = cal.predict(predictions)
+            for (chrom, start, end), pred in zip(coords, predictions):
+                printable_pred = [format(p, ".8f") for p in pred]
+                print(chrom, start, end, *printable_pred, sep="\t", file=f)
 
 
 def do_apply(conf):
