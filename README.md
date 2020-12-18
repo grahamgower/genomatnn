@@ -37,7 +37,7 @@ may work, but these have not been tested.
    conda create -n genomatnn gsl cudnn "blas=*=mkl" numpy
    # Activate the conda environment.
    conda activate genomatnn
-   # If using an old version of conda, if may be neccessary to use a different
+   # If using an old version of conda, it may be neccessary to use a different
    # command to activate the environment:
    #source activate genomatnn
    ```
