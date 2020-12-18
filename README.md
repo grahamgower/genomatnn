@@ -29,13 +29,17 @@ may work, but these have not been tested.
    ```
 
 2. Create a new conda environment. If you intend to do CPU-only training,
-   you can remove `cudnn` from the list. We pin the numpy version here because
-   recent versions are incompatible with tensorflow. We choose the `mkl` variant
+   you can remove `cudnn` from the list. We choose the `mkl` variant
    of blas, which uses the Intel math kernel and markedly improves the speed of
-   matrix operations on Intel CPUs.
+   matrix operations on Intel CPUs. Installing numpy here (instead of with pip)
+   ensures numpy will also use the mkl blas.
    ```
-   conda create -n genomatnn gsl cudnn "numpy<1.19" "blas=*=mkl"
+   conda create -n genomatnn gsl cudnn "blas=*=mkl" numpy
+   # Activate the conda environment.
    conda activate genomatnn
+   # If using an old version of conda, if may be neccessary to use a different
+   # command to activate the environment:
+   #source activate genomatnn
    ```
 
 3. Install our `selection` stdpopsim branch. This branch will only be installed
