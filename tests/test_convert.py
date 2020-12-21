@@ -171,6 +171,7 @@ class TestGenotypeMatrixes(unittest.TestCase):
                 _, _, _, V, vcf_pos = next(
                     vcf.accumulate_matrices(
                         vcf_file,
+                        vcf_pop_intervals=[(0, num_haplotypes)],
                         winsize=winsize,
                         winstep=winsize,
                         samples_file=samples_file,

@@ -149,10 +149,13 @@ def KimDFE():
     neutral = stdpopsim.ext.MutationType(weight=1.0)
     gamma_shape = 0.186  # shape
     gamma_mean = -0.01314833  # expected value
-    h = 0.5/(1-7071.07*gamma_mean)  # dominance coefficient
+    h = 0.5 / (1 - 7071.07 * gamma_mean)  # dominance coefficient
     negative = stdpopsim.ext.MutationType(
-            weight=2.31, dominance_coeff=h, distribution_type="g",
-            distribution_args=[gamma_mean, gamma_shape])
+        weight=2.31,
+        dominance_coeff=h,
+        distribution_type="g",
+        distribution_args=[gamma_mean, gamma_shape],
+    )
     return [neutral, negative]
 
 
@@ -522,13 +525,7 @@ def generic_Neutral(model, contig, samples, seed, engine="slim", **kwargs):
     if engine == "slim":
         kwargs.update(slim_burn_in=0.1, slim_scaling_factor=10)
     engine = stdpopsim.get_engine(engine)
-    ts = engine.simulate(
-        model,
-        contig,
-        samples,
-        seed=seed,
-        **kwargs
-    )
+    ts = engine.simulate(model, contig, samples, seed=seed, **kwargs)
     return ts, (contig.origin, 0, 0, 0)
 
 

@@ -10,6 +10,7 @@ class TestVCF(unittest.TestCase):
     vcf_chrom = "22"
     vcf_start = 21000001
     vcf_end = 22000000
+    vcf_pop_intervals = [(0, 209)]  # all populations pooled
 
     def test_bcftools_query(self):
         prev_pos = 0
@@ -30,7 +31,10 @@ class TestVCF(unittest.TestCase):
         n_sites = 0
         prev_pos = 0
         for chrom, pos, gt in vcf.genotypes(
-            self.vcf_file, maf_thres=maf_thres, max_missing_thres=max_missing_thres,
+            self.vcf_file,
+            vcf_pop_intervals=self.vcf_pop_intervals,
+            maf_thres=maf_thres,
+            max_missing_thres=max_missing_thres,
         ):
             n_sites += 1
             self.assertEqual(chrom, self.vcf_chrom)
@@ -64,6 +68,7 @@ class TestVCF(unittest.TestCase):
         acc_pos_lists = dict()
         for chrom, start, end, M, pos_list in vcf.accumulate_matrices(
             self.vcf_file,
+            vcf_pop_intervals=self.vcf_pop_intervals,
             winsize=winsize,
             winstep=winstep,
             min_seg_sites=min_seg_sites,
@@ -87,6 +92,7 @@ class TestVCF(unittest.TestCase):
         sites_list = []
         for _, pos, _ in vcf.genotypes(
             self.vcf_file,
+            vcf_pop_intervals=self.vcf_pop_intervals,
             regions=f"{self.vcf_chrom}:{self.vcf_start}-{self.vcf_end}",
             maf_thres=maf_thres,
             max_missing_thres=max_missing_thres,
