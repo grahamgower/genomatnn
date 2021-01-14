@@ -77,6 +77,8 @@ def contig_lengths(vcf):
 
 def genotypes(
     vcf,
+    *,
+    vcf_pop_intervals,
     samples_file=None,
     regions=None,
     max_missing_thres=None,
@@ -134,6 +136,15 @@ def genotypes(
         if minor_ac < maf_thres * n:
             continue
 
+        # Check missingness for each population.
+        skip = False
+        for a, b in vcf_pop_intervals:
+            if np.count_nonzero(gt[a:b] == 2) > max_missing_thres * (b - a):
+                skip = True
+                break
+        if skip:
+            continue
+
         # Polarise 0 and 1 in genotype matrix by major allele frequency.
         # If allele counts are the same, randomly choose a major allele.
         if ac[1] > ac[0] or (ac[1] == ac[0] and rng.random() > 0.5):
@@ -147,6 +158,7 @@ def accumulate_matrices(
     *,
     winsize,
     winstep,
+    vcf_pop_intervals,
     samples_file=None,
     regions=None,
     min_seg_sites=None,
@@ -171,6 +183,7 @@ def accumulate_matrices(
 
     for chrom, pos, gt in genotypes(
         vcf,
+        vcf_pop_intervals=vcf_pop_intervals,
         samples_file=samples_file,
         regions=regions,
         max_missing_thres=max_missing_thres,
@@ -249,6 +262,8 @@ def _matrix_batch_1(
     num_rows,
     counts,
     indices,
+    haploid_counts,
+    haploid_indices,
     ref_pop,
     samples_file,
     min_seg_sites,
@@ -260,12 +275,16 @@ def _matrix_batch_1(
     (vcf, chrom, start, end), seed = args
     rng = np.random.default_rng(seed)
     region = f"{chrom}:{start}-{end}"
+    vcf_pop_intervals = [
+        (j, j + n) for j, n in zip(haploid_indices.values(), haploid_counts.values())
+    ]
     coords = []
     B = []
     for chrom, start, end, M, gt_pos_list in accumulate_matrices(
         vcf,
         winsize=winsize,
         winstep=winstep,
+        vcf_pop_intervals=vcf_pop_intervals,
         samples_file=samples_file,
         regions=region,
         min_seg_sites=min_seg_sites,
@@ -296,6 +315,8 @@ def matrix_batches(
     num_rows,
     counts,
     indices,
+    haploid_counts,
+    haploid_indices,
     ref_pop,
     phased,
     ploidy,
@@ -343,6 +364,8 @@ def matrix_batches(
         num_rows=num_rows,
         counts=counts,
         indices=indices,
+        haploid_counts=haploid_counts,
+        haploid_indices=haploid_counts,
         ref_pop=ref_pop,
         samples_file=samples_file,
         min_seg_sites=min_seg_sites,
