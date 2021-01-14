@@ -186,9 +186,22 @@ def do_eval(conf):
         extra_pred = extra_pred[:, 0]
 
     hap_pdf = str(plot_dir / "genotype_matrices.pdf")
+    logger.debug(f"Plotting {hap_pdf}...")
     plots.ts_hap_matrix(conf, val_data, val_pred, val_metadata, hap_pdf)
 
+    saliency_pdf = str(plot_dir / "saliency.pdf")
+    logger.debug(f"Plotting {saliency_pdf}...")
+    plots.saliency(
+        conf=conf,
+        model=model,
+        data=val_data,
+        pred=val_pred,
+        metadata=val_metadata,
+        pdf_file=saliency_pdf,
+    )
+
     roc_pdf = str(plot_dir / "roc.pdf")
+    logger.debug(f"Plotting {roc_pdf}...")
     plots.roc(
         conf=conf,
         labels=val_labels,
@@ -201,6 +214,7 @@ def do_eval(conf):
     )
 
     accuracy_pdf = str(plot_dir / "accuracy.pdf")
+    logger.debug(f"Plotting {accuracy_pdf}...")
     plots.accuracy(
         conf,
         val_labels,
@@ -210,6 +224,7 @@ def do_eval(conf):
     )
 
     confusion_pdf = str(plot_dir / "confusion.pdf")
+    logger.debug(f"Plotting {confusion_pdf}...")
     plots.confusion(
         conf,
         val_labels,
@@ -244,12 +259,14 @@ def do_eval(conf):
     preds = [("Uncal.", resampled_val_pred)]
     for cc in calibrate.calibration_classes:
         label = cc.__name__
+        logger.debug(f"Applying {label} recalibration...")
         cc_pred = (
             cc().fit(resampled_train_pred, resampled_train_labels).predict(val_pred)
         )
         preds.append((label, cc_pred[val_upidx]))
 
     reliability_pdf = str(plot_dir / "reliability.pdf")
+    logger.debug(f"Plotting {reliability_pdf}...")
     plots.reliability(conf, resampled_val_labels, preds, reliability_pdf)
 
 
