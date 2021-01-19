@@ -664,24 +664,36 @@ def reliability(conf, labels, preds, pdf_file, aspect=10 / 16, scale=1.5, bins=1
 
 def hap_matrix1(
     A,
+    *,
     ax,
     title,
     sample_counts,
     pop_indices,
     sequence_length,
-    aspect,
     cmap,
     rasterized,
     phased,
     ploidy,
+    vmin=None,
+    vmax=None,
+    plot_cbar=True,
+    ax_cbar=None,
+    cbar_label=None,
+    plot_pop_labels=True,
+    ax_pops=None,
 ):
     """
     Plot one haplotype (or genotype) matrix, with a bar at the bottom
     indicating the population of origin for a given haplotype/genotype column.
     """
-    # vmax heuristic to make the patterns clear
-    x = 1 if phased else ploidy
-    vmax = int(round(x * np.log2(sequence_length / 20 / A.shape[0])))
+    if vmax is None:
+        # vmax heuristic to make the patterns clear
+        x = 1 if phased else ploidy
+        vmax = int(round(x * np.log2(sequence_length / 20 / A.shape[0])))
+        int_ticks = True
+    else:
+        int_ticks = False
+
     im = ax.imshow(
         A,
         interpolation="none",
@@ -691,20 +703,8 @@ def hap_matrix1(
         extent=(0, A.shape[1], 0, A.shape[0]),
         aspect="auto",
         cmap=cmap,
-        norm=matplotlib.colors.PowerNorm(0.5, vmax=vmax),
+        norm=matplotlib.colors.PowerNorm(0.5, vmin=vmin, vmax=vmax),
     )
-
-    cb = ax.figure.colorbar(
-        im,
-        ax=ax,
-        extend="max",
-        pad=0.05,
-        fraction=0.04,
-        label="Density of minor alleles",
-    )
-    cb.ax.yaxis.set_ticks_position("left")
-    cticks = list(range(vmax + 1))
-    cb.set_ticks(cticks)
 
     ax.set_title(title)
     ax.set_ylabel("Genomic position")
@@ -714,37 +714,58 @@ def hap_matrix1(
     plt.setp(ax.get_xticklabels(), visible=False)
     ax.tick_params(axis="x", length=0)
 
-    #
-    # Add population-labels colour bar on a new axis.
-    #
-    divider = axes_grid1.make_axes_locatable(ax)
-    ax_pops = divider.append_axes("bottom", 0.2, pad=0.05, sharex=ax)
-    ax_pops.set_ylim([0, 1])
-
     for sp in ("top", "right", "bottom", "left"):
         ax.spines[sp].set_visible(False)
-        ax_pops.spines[sp].set_visible(False)
 
-    pop_ticks = []
-    boxes = []
-    colours = plt.get_cmap("tab10").colors
-    for index, count in zip(pop_indices.values(), sample_counts.values()):
-        # (x, y), width, height
-        r = Rectangle((index, 0), count, 1)
-        boxes.append(r)
-        pop_ticks.append(index + count / 2)
+    if plot_cbar:
+        if cbar_label is None:
+            cbar_label = "Density of minor alleles"
+        cb = ax.figure.colorbar(
+            im,
+            ax=ax if ax_cbar is None else None,
+            cax=ax_cbar,
+            extend="max" if int_ticks else "neither",
+            pad=0.05,
+            fraction=0.04,
+            label=cbar_label,
+        )
+        cb.ax.yaxis.set_ticks_position("left")
+        if int_ticks:
+            cticks = list(range(vmax + 1))
+            cb.set_ticks(cticks)
 
-    pc = PatchCollection(boxes, fc=colours, rasterized=rasterized)
-    ax_pops.add_collection(pc)
+    if plot_pop_labels:
+        #
+        # Add population-labels colour bar on a new axis.
+        #
+        if ax_pops is None:
+            divider = axes_grid1.make_axes_locatable(ax)
+            ax_pops = divider.append_axes("bottom", 0.2, pad=0.05, sharex=ax)
+        ax_pops.set_ylim([0, 1])
 
-    ax_pops.set_yticks([])
-    ax_pops.set_yticklabels([])
-    ax_pops.set_xticks(pop_ticks)
-    ax_pops.set_xticklabels(list(pop_indices.keys()))
-    if phased:
-        ax_pops.set_xlabel("Haplotypes")
-    else:
-        ax_pops.set_xlabel("Individuals")
+        for sp in ("top", "right", "bottom", "left"):
+            ax_pops.spines[sp].set_visible(False)
+
+        pop_ticks = []
+        boxes = []
+        colours = plt.get_cmap("tab10").colors
+        for index, count in zip(pop_indices.values(), sample_counts.values()):
+            # (x, y), width, height
+            r = Rectangle((index, 0), count, 1)
+            boxes.append(r)
+            pop_ticks.append(index + count / 2)
+
+        pc = PatchCollection(boxes, fc=colours, rasterized=rasterized)
+        ax_pops.add_collection(pc)
+
+        ax_pops.set_yticks([])
+        ax_pops.set_yticklabels([])
+        ax_pops.set_xticks(pop_ticks)
+        ax_pops.set_xticklabels(list(pop_indices.keys()))
+        if phased:
+            ax_pops.set_xlabel("Haplotypes")
+        else:
+            ax_pops.set_xlabel("Individuals")
 
     ax.figure.tight_layout()
 
@@ -775,16 +796,15 @@ def hap_matrix(
         fig, ax = plt.subplots(1, 1, figsize=(scale * fig_w, scale * fig_h))
         hap_matrix1(
             A,
-            ax,
-            title,
-            sample_counts,
-            pop_indices,
-            conf.sequence_length,
-            aspect,
-            cmap,
-            rasterized,
-            conf.phased,
-            conf.ploidy,
+            ax=ax,
+            title=title,
+            sample_counts=sample_counts,
+            pop_indices=pop_indices,
+            sequence_length=conf.sequence_length,
+            cmap=cmap,
+            rasterized=rasterized,
+            phased=conf.phased,
+            ploidy=conf.ploidy,
         )
         pdf.savefig(figure=fig)
         plt.close(fig)
@@ -852,3 +872,115 @@ def vcf_hap_matrix(
                 yield A[..., 0], title
 
     hap_matrix(conf, flatten_batches(), pdf_file)
+
+
+# helper functions for tf_keras_vis plots
+
+
+def _model_modifier(model):
+    import tensorflow as tf
+
+    # Change last layer from sigmoid activation to linear.
+    # The model will have been cloned before this call, so we modify directly.
+    assert model.layers[-1].name == "output"
+    model.layers[-1].activation = tf.keras.activations.linear
+    return model
+
+
+def _loss(output):
+    return output[:, 0]
+
+
+def saliency(
+    *,
+    conf,
+    model,
+    data,
+    pred,
+    metadata,
+    pdf_file,
+    n_examples=300,
+    smooth_samples=0,
+    aspect=12 / 16,
+    scale=1.2,
+    cmap="cool",
+    rasterized=False,
+):
+    """
+    Plot saliency map for each modelspec. Plot up to n_examples for each.
+    """
+    from tf_keras_vis.saliency import Saliency
+    from tf_keras_vis.utils import normalize
+
+    assert n_examples >= 1
+    modelspecs = list(itertools.chain(*conf.tranche.values()))
+    modelspec_indexes = collections.defaultdict(list)
+    want_more = set(modelspecs)
+
+    for i in range(len(data)):
+        modelspec = metadata[i]["modelspec"]
+        if modelspec in want_more:
+            modelspec_indexes[modelspec].append(i)
+            if len(modelspec_indexes[modelspec]) == n_examples:
+                want_more.remove(modelspec)
+                if len(want_more) == 0:
+                    break
+
+    indexes = list(itertools.chain(*modelspec_indexes.values()))
+
+    saliency = Saliency(model, model_modifier=_model_modifier)
+    X = np.expand_dims(data[indexes], axis=-1).astype(np.float32)
+    saliency_maps = saliency(_loss, X, smooth_samples=smooth_samples)
+    saliency_maps = normalize(saliency_maps)
+
+    _, condition_positive = list(conf.tranche.keys())
+    sample_counts = conf.sample_counts(haploid=conf.phased)
+    pop_indices = conf.pop_indices(haploid=conf.phased)
+
+    pdf = PdfPages(pdf_file)
+    fig_w, fig_h = plt.figaspect(aspect)
+    fig = plt.figure(figsize=(scale * fig_w, scale * fig_h))
+
+    nrows = len(modelspecs) + 1
+    gs = fig.add_gridspec(
+        nrows=nrows,
+        ncols=2,
+        height_ratios=[8] * (nrows - 1) + [1],
+        width_ratios=[40, 1],
+    )
+    axs = [fig.add_subplot(gs[i, 0]) for i in range(nrows)]
+    ax_cbar = fig.add_subplot(gs[:-1, 1])
+    axs[-1].get_shared_x_axes().join(axs[-1], axs[-2])
+    ax_pops = axs[-1]
+
+    i = 0
+    for ax, modelspec in zip(axs, modelspecs):
+        # Take average over maps with the same modelspec.
+        saliency_map = np.mean(saliency_maps[i : i + n_examples], axis=0)
+        i += n_examples
+
+        last_subplot = ax == axs[-2]
+        title = modelspec.split("/")[-2]
+        hap_matrix1(
+            saliency_map,
+            ax=ax,
+            title=title,
+            sample_counts=sample_counts,
+            pop_indices=pop_indices,
+            sequence_length=conf.sequence_length,
+            cmap=cmap,
+            rasterized=rasterized,
+            phased=conf.phased,
+            ploidy=conf.ploidy,
+            vmin=0,
+            vmax=1,
+            plot_cbar=last_subplot,
+            ax_cbar=ax_cbar if last_subplot else None,
+            cbar_label="abs(Gradient)",
+            plot_pop_labels=last_subplot,
+            ax_pops=ax_pops if last_subplot else None,
+        )
+
+    pdf.savefig(figure=fig)
+    plt.close(fig)
+    pdf.close()
