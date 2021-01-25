@@ -5,6 +5,7 @@ import collections
 import functools
 import bisect
 import logging
+import copy
 
 import attr
 import msprime
@@ -274,7 +275,76 @@ def hominin_composite():
     )
 
 
-def homsap_composite_model(length, sample_counts, seed):
+def hominin_composite_archaic_africa():
+    dm = hominin_composite()
+    id = "HomininComposite2_4G20"
+    description = "HomininComposite2_4G20 plus archaic lineage in Africa"
+    generation_time = 29
+
+    # Ragsdale & Gravel 2019
+    N_0 = 3600
+    T_arch_afr_split = 499e3 / generation_time
+    T_arch_afr_mig = 125e3 / generation_time
+    T_arch_adm_end = 18.7e3 / generation_time
+    m_AF_arch_af = 1.98e-5
+
+    populations = dm.populations + [
+        stdpopsim.Population(
+            "ArchaicAFR", "Putative Archaic Africans", sampling_time=None
+        ),
+    ]
+    population_configurations = dm.population_configurations + [
+        msprime.PopulationConfiguration(
+            initial_size=N_0, metadata=populations[-1].asdict()
+        ),
+    ]
+    pop = {p.id: i for i, p in enumerate(populations)}
+    demographic_events = dm.demographic_events + [
+        # migration turned on between African and archaic African populations
+        msprime.MigrationRateChange(
+            time=T_arch_adm_end,
+            rate=m_AF_arch_af,
+            matrix_index=(pop["YRI"], pop["ArchaicAFR"]),
+        ),
+        msprime.MigrationRateChange(
+            time=T_arch_adm_end,
+            rate=m_AF_arch_af,
+            matrix_index=(pop["ArchaicAFR"], pop["YRI"]),
+        ),
+        # Beginning of migration between African and archaic African populations
+        msprime.MigrationRateChange(
+            time=T_arch_adm_end,
+            rate=0,
+            matrix_index=(pop["YRI"], pop["ArchaicAFR"]),
+        ),
+        msprime.MigrationRateChange(
+            time=T_arch_adm_end,
+            rate=0,
+            matrix_index=(pop["ArchaicAFR"], pop["YRI"]),
+        ),
+        # Archaic African merges with moderns
+        msprime.MassMigration(
+            time=T_arch_afr_split,
+            source=pop["ArchaicAFR"],
+            destination=pop["Anc"],
+            proportion=1.0,
+        ),
+    ]
+    demographic_events.sort(key=lambda x: x.time)
+
+    return stdpopsim.DemographicModel(
+        id=id,
+        description=description,
+        long_description=dm.long_description,
+        populations=populations,
+        citations=dm.citations.copy(),
+        generation_time=generation_time,
+        population_configurations=population_configurations,
+        demographic_events=demographic_events,
+    )
+
+
+def homsap_composite_model(length, sample_counts, seed, model=hominin_composite()):
     if "Nea" in sample_counts and sample_counts["Nea"] != 4:
         raise RuntimeError(
             "Must have one sample each for the Vindija and Altai Neanderthals"
@@ -283,7 +353,12 @@ def homsap_composite_model(length, sample_counts, seed):
     model = hominin_composite()
     contig = random_autosomal_chunk(species, "HapMapII_GRCh37", length, seed)
     samples = model.get_samples(
-        *[sample_counts.get(p.id, 0) if p.id != "Nea" else 0 for p in model.populations]
+        *[
+            sample_counts.get(p.id, 0)
+            if p.id != "Nea" and p.sampling_time is not None
+            else 0
+            for p in model.populations
+        ]
     )
     if "Nea" in sample_counts:
         # Altai and Vindija Neanderthal dates from Prüfer et al. 2017.
@@ -807,6 +882,18 @@ _simulations = {
     ),
     "HomSap/HomininComposite_4G20": ModelSpec(
         model_func=homsap_composite_model,
+        scenarios={
+            "Neutral/slim": functools.partial(generic_Neutral, engine="slim"),
+            "Neutral/msprime": functools.partial(generic_Neutral, engine="msprime"),
+            "DFE": homsap_DFE,
+            "AI/Nea_to_CEU": functools.partial(homsap_composite_Nea_to_CEU, s_lo=1e-4),
+            "Sweep/CEU": homsap_composite_Sweep_CEU,
+        },
+    ),
+    "HomSap/HomininComposite2_4G20": ModelSpec(
+        model_func=functools.partial(
+            homsap_composite_model, model=hominin_composite_archaic_africa
+        ),
         scenarios={
             "Neutral/slim": functools.partial(generic_Neutral, engine="slim"),
             "Neutral/msprime": functools.partial(generic_Neutral, engine="msprime"),
