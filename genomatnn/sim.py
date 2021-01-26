@@ -5,7 +5,6 @@ import collections
 import functools
 import bisect
 import logging
-import copy
 
 import attr
 import msprime
@@ -288,6 +287,8 @@ def hominin_composite_archaic_africa():
     T_arch_adm_end = 18.7e3 / generation_time
     m_AF_arch_af = 1.98e-5
 
+    T_YRI_CEU_split = 65.7e3 / generation_time
+
     populations = dm.populations + [
         stdpopsim.Population(
             "ArchaicAFR", "Putative Archaic Africans", sampling_time=None
@@ -300,7 +301,7 @@ def hominin_composite_archaic_africa():
     ]
     pop = {p.id: i for i, p in enumerate(populations)}
     demographic_events = dm.demographic_events + [
-        # migration turned on between African and archaic African populations
+        # migration turned on between Yoruban and archaic African populations
         msprime.MigrationRateChange(
             time=T_arch_adm_end,
             rate=m_AF_arch_af,
@@ -310,17 +311,39 @@ def hominin_composite_archaic_africa():
             time=T_arch_adm_end,
             rate=m_AF_arch_af,
             matrix_index=(pop["ArchaicAFR"], pop["YRI"]),
+        ),
+        # YRI merges into Anc: turn off migration between YRI and ArchaicAFR.
+        msprime.MigrationRateChange(
+            time=T_YRI_CEU_split,
+            rate=0,
+            matrix_index=(pop["YRI"], pop["ArchaicAFR"]),
+        ),
+        msprime.MigrationRateChange(
+            time=T_YRI_CEU_split,
+            rate=0,
+            matrix_index=(pop["ArchaicAFR"], pop["YRI"]),
+        ),
+        # migration turned on between African and archaic African populations
+        msprime.MigrationRateChange(
+            time=T_YRI_CEU_split,
+            rate=m_AF_arch_af,
+            matrix_index=(pop["Anc"], pop["ArchaicAFR"]),
+        ),
+        msprime.MigrationRateChange(
+            time=T_YRI_CEU_split,
+            rate=m_AF_arch_af,
+            matrix_index=(pop["ArchaicAFR"], pop["Anc"]),
         ),
         # Beginning of migration between African and archaic African populations
         msprime.MigrationRateChange(
-            time=T_arch_adm_end,
+            time=T_arch_afr_mig,
             rate=0,
-            matrix_index=(pop["YRI"], pop["ArchaicAFR"]),
+            matrix_index=(pop["Anc"], pop["ArchaicAFR"]),
         ),
         msprime.MigrationRateChange(
-            time=T_arch_adm_end,
+            time=T_arch_afr_mig,
             rate=0,
-            matrix_index=(pop["ArchaicAFR"], pop["YRI"]),
+            matrix_index=(pop["ArchaicAFR"], pop["Anc"]),
         ),
         # Archaic African merges with moderns
         msprime.MassMigration(
