@@ -32,9 +32,11 @@ may work, but these have not been tested.
    you can remove `cudnn` from the list. We choose the `mkl` variant
    of blas, which uses the Intel math kernel and markedly improves the speed of
    matrix operations on Intel CPUs. Installing numpy here (instead of with pip)
-   ensures numpy will also use the mkl blas.
+   ensures numpy will also use the mkl blas. We pin numpy 1.19.x and python 3.8.x
+   because at the time of writing (Feb 2021), the latest tensorflow (2.4.1)
+   does not work with newer numpy nor python versions.
    ```
-   conda create -n genomatnn gsl cudnn "blas=*=mkl" numpy
+   conda create -n genomatnn gsl cudnn "blas=*=mkl" numpy=1.19 python=3.8
    # Activate the conda environment.
    conda activate genomatnn
    # If using an old version of conda, it may be neccessary to use a different
@@ -55,14 +57,13 @@ may work, but these have not been tested.
    ```
    git clone https://github.com/grahamgower/genomatnn.git
    cd genomatnn
+   pip install -r requirements.txt
    python setup.py install
    ```
 
 5. Run the tests to check that installation was successful.
    The tests can take a few minutes to run.
    ```
-   pip install nose
-   python setup.py build_ext -i
    nosetests -v tests
    ```
 
