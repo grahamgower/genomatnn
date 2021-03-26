@@ -11,11 +11,16 @@ logger = logging.getLogger(__name__)
 
 
 def Z_score(p, y):
-    # Calibration check following Turner et al. (2019).
-    # http://arxiv.org/abs/1811.11357
-    # If the predictions are well calibrated, then:
-    #   y[i] ~ Bern(p[i])
-    # And so Z, as calculated below, should be ~Norm(0,1).
+    """
+    Return the variance-normalised sum of residuals for the model prediction
+    probabilities ``p``, from the true labels ``y``.  For a well-calibrated
+    model,
+      y[i] ~ Bern(p[i]),
+    So, the sum of variance-normalised sum of residuals will be ~Norm(0, 1).
+
+    This check follows Turner et al. (2019).
+    http://arxiv.org/abs/1811.11357
+    """
     residuals = y - p
     variance = p * (1 - p)
     Z = np.sum(residuals) / np.sqrt(np.sum(variance))

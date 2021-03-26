@@ -189,6 +189,31 @@ def longest_common_prefix(string_list):
     return string_list[0][:i]
 
 
+def mcc_unit(tp, fp):
+    """
+    Unit-normalised Matthews correlation coefficient (MCC).
+    """
+    fn = 1 - tp
+    tn = 1 - fp
+    mcc_num = tp * tn - fp * fn
+    mcc_den = np.sqrt((tp + fp) * (tp + fn) * (tn + fp) * (tn + fn))
+    mcc = np.true_divide(
+        mcc_num, mcc_den, out=np.full_like(tp, np.nan), where=mcc_den != 0
+    )
+    return (mcc + 1) / 2
+
+
+def f1_score(tp, fp):
+    """
+    F1 score: the harmonic mean of precision and recall.
+    """
+    fn = 1 - tp
+    f1_num = 2 * tp
+    f1_den = 2 * tp + fp + fn
+    f1 = np.true_divide(f1_num, f1_den, out=np.full_like(tp, np.nan), where=f1_den != 0)
+    return f1
+
+
 def esf(a, q, norm=True):
     """
     Empirical survival function.
@@ -285,20 +310,14 @@ def roc(
         axs[0].plot(fpr, tpr, color=c, linestyle=ls, label=label)
         if inset:
             ax0_inset.plot(fpr, tpr, color=c, linestyle=ls)
-        for i, ch in zip((50,), ("o", "x")):
-            if ch == "x":
-                ec = "none"
-                fc = c
-            else:
-                ec = c
-                fc = "none"
-            axs[0].scatter(fpr[i], tpr[i], marker=ch, facecolor=fc, edgecolor=ec)
-            if inset:
-                ax0_inset.scatter(fpr[i], tpr[i], marker=ch, facecolor=fc, edgecolor=ec)
+        axs[0].scatter(fpr[50], tpr[50], marker="o", facecolor="none", edgecolor=c)
+        if inset:
+            ax0_inset.scatter(
+                fpr[50], tpr[50], marker="o", facecolor="none", edgecolor=c
+            )
 
-        # PR
+        # Precision-Recall
         recall = tpr
-        # precision = tpr / (tpr + fpr)
         precision = np.true_divide(
             tpr, tpr + fpr, out=np.full_like(tpr, np.nan), where=tpr + fpr != 0
         )
@@ -310,36 +329,15 @@ def roc(
         axs[1].plot(recall, precision, color=c, linestyle=ls, label=label)
         # axs[1].scatter(
         #        recall, precision, marker=m, facecolor=c, edgecolor=c, label=label)
-        for i, ch in zip((50,), ("o", "x")):
-            if ch == "x":
-                ec = "none"
-                fc = c
-            else:
-                ec = c
-                fc = "none"
-            axs[1].scatter(
-                recall[i], precision[i], marker=ch, facecolor=fc, edgecolor=ec
-            )
+        axs[1].scatter(
+            recall[50], precision[50], marker="o", facecolor="none", edgecolor=c
+        )
 
-        if len(axs) >= 3:
-            tnr = 1 - fpr  # true negative rate (specificity)
-            fnr = 1 - tpr  # false negative rate
-            # negative predictive value
-            # npv = tnr / (tnr + fnr)
-            npv = np.true_divide(
-                tnr, tnr + fnr, out=np.full_like(tnr, np.nan), where=tnr + fnr != 0
-            )
-
-            axs[2].plot(tnr, npv, color=c, linestyle=ls, label=label)
-            # axs[2].scatter(fnr, _for, marker=m, facecolor=c, edgecolor=c, label=label)
-            for i, ch in zip((50,), ("o", "x")):
-                if ch == "x":
-                    ec = "none"
-                    fc = c
-                else:
-                    ec = c
-                    fc = "none"
-                axs[2].scatter(tnr[i], npv[i], marker=ch, facecolor=fc, edgecolor=ec)
+        # MCC-F1
+        mcc = mcc_unit(tpr, fpr)
+        f1 = f1_score(tpr, fpr)
+        axs[2].plot(f1, mcc, color=c, linestyle=ls, label=label)
+        axs[2].scatter(f1[50], mcc[50], marker="o", facecolor="none", edgecolor=c)
 
     handles, _ = axs[0].get_legend_handles_labels()
     handles.extend(
@@ -352,7 +350,7 @@ def roc(
                 markerfacecolor="none",
                 markeredgecolor="k",
                 markersize=10,
-                label=f"Pr{{{condition_positive}}} > 0.50",
+                label=f"Pr[{condition_positive}] > 0.50",
             ),
         ]
     )
@@ -394,10 +392,9 @@ def roc(
     axs[1].set_xlabel("Recall: TP/(TP+FN)")
     axs[1].set_ylabel("Precision: TP/(TP+FP)")
 
-    # axs[2].set_title("Specificity vs. Negative Predictive Value")
-    axs[2].set_title("TNR-NPV")
-    axs[2].set_xlabel("TNR: TN/(TN+FP)")
-    axs[2].set_ylabel("NPV: TN/(TN+FN)")
+    axs[2].set_title("MCC-$F_1$ curve")
+    axs[2].set_xlabel("$F_1$")
+    axs[2].set_ylabel("Unit-normalised MCC")
 
     fig.tight_layout()
     pdf.savefig(figure=fig)

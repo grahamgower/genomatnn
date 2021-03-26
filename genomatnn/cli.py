@@ -120,6 +120,17 @@ def do_train(conf):
     do_eval(conf)
 
 
+def dump_sim_predictions(
+    conf, val_pred, val_metadata, extra_pred, extra_metadata, filename
+):
+    with open(filename, "w") as f:
+        for pred, metadata in zip(val_pred, val_metadata):
+            print(metadata["modelspec"], pred, file=f)
+        if extra_pred is not None:
+            for pred, metadata in zip(extra_pred, extra_metadata):
+                print(metadata["modelspec"], pred, file=f)
+
+
 def do_eval(conf):
     cache = conf.dir / f"zarrcache_{conf.num_rows}-rows"
     val_keys = ["val/data", "val/labels", "val/metadata"]
@@ -184,6 +195,12 @@ def do_eval(conf):
     val_pred = val_pred[:, 0]
     if extra_pred is not None:
         extra_pred = extra_pred[:, 0]
+
+    eval_txt = str(plot_dir / "eval.txt")
+    logger.debug(f"Dumping evaluation (simulation) predictions to {eval_txt}...")
+    dump_sim_predictions(
+        conf, val_pred, val_metadata, extra_pred, extra_metadata, eval_txt
+    )
 
     hap_pdf = str(plot_dir / "genotype_matrices.pdf")
     logger.debug(f"Plotting {hap_pdf}...")
