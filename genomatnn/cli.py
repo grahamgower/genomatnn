@@ -197,6 +197,7 @@ def do_eval(conf):
         extra_pred = extra_pred[:, 0]
 
     eval_txt = str(plot_dir / "eval.txt")
+    logger.debug(f"Dumping evaluation (simulation) predictions to {eval_txt}...")
     dump_sim_predictions(
         conf, val_pred, val_metadata, extra_pred, extra_metadata, eval_txt
     )
