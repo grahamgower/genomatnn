@@ -1,5 +1,13 @@
 __pycache__
 build/
+*.egg-info
+genomatnn/misc.c
 *.so
 .coverage
 _version.py
+Den_to_Papuan*/
+Nea_to_CEU*/
+r1/
+r2/
+x/
+*.pdf

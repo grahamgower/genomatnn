@@ -44,8 +44,8 @@ def recomb_slice(recomb_map, start=None, end=None):
     points. If start is None, it defaults to 0. If end is None, it defaults
     to the end of the map.
     """
-    if hasattr(msprime.RecombinationMap, "slice"):
-        raise RuntimeError("Using msprime >= 1.0. Should use recombination map slicing")
+    # if hasattr(msprime.RecombinationMap, "slice"):
+    #    raise RuntimeError("Using msprime >= 1.0. Should use recombination map slicing")
 
     positions = recomb_map.get_positions()
     rates = recomb_map.get_rates()
