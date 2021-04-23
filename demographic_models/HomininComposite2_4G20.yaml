@@ -1,0 +1,57 @@
+# Demographic Model A2
+description:
+  A composite hominin model with demographic parameters taken from
+  multiple sources. This is the same as HomininComposite2_4G20.yaml
+  expect for the addition of the ArchaicAFR deme and migration with
+  that deme within Africa.
+time_units: generations
+doi:
+- https://doi.org/10.1038/nature16544
+- https://doi.org/10.1126/science.aao1887
+- https://doi.org/10.1371/journal.pgen.1008204
+demes:
+- name: Anc
+  epochs:
+  - end_time: 2265.5172413793102
+    start_size: 18500.0
+- name: Nea
+  start_time: 18965.51724137931
+  ancestors:
+  - Anc
+  epochs:
+  - end_time: 0
+    start_size: 3400.0
+- name: ArchaicAFR
+  start_time: 17206.896551724138
+  ancestors:
+  - Anc
+  epochs:
+  - end_time: 0
+    start_size: 3600.0
+- name: CEU
+  ancestors:
+  - Anc
+  epochs:
+  - end_time: 1100.0
+    start_size: 1080.0
+  - end_time: 0
+    start_size: 1450.0
+    end_size: 13377.357734109575
+- name: YRI
+  ancestors:
+  - Anc
+  epochs:
+  - end_time: 0
+    start_size: 27000.0
+migrations:
+- start_time: 4310.3448275862065
+  rate: 1.98e-05
+  demes: [Anc, ArchaicAFR]
+- end_time: 644.8275862068965
+  rate: 1.98e-05
+  demes: [YRI, ArchaicAFR]
+pulses:
+- source: Nea
+  dest: CEU
+  time: 1896.551724137931
+  proportion: 0.0225
