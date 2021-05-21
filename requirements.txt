@@ -4,7 +4,7 @@ stdpopsim @ git+https://github.com/grahamgower/stdpopsim.git@selection
 zarr==2.5.0
 toml==0.10.2
 numpy==1.19.5
-tensorflow==2.4.1
+tensorflow==2.5.0
 tf-keras-vis==0.5.5
 matplotlib==3.3.3
 scikit-learn==0.23.2
