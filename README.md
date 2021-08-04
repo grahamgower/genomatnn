@@ -137,7 +137,7 @@ There are some options which are common to all subcommands, such as the
 
 ## Configuration
 From the usage information above, we can see that `genomatnn` subcommands
-require a configuration file. A genomatnn analysis procedes through
+require a configuration file. A genomatnn analysis proceeds through
 multiple steps, and each step needs to be configured consistently with the
 previous step(s). The most extreme example of this, is that the number of
 individuals that are simulated in the first `sim` step must match the
@@ -296,7 +296,7 @@ num_rows = 32
 This will resize the genotype matrices so that each haplotype is 
 represented by 32 bins. The smaller the matrices, the less memory we'll
 use, and the faster it will be to train. 32 may not seem like much, but
-a CNN is suprisingly effective with even very low resolution input.
+a CNN is surprisingly effective with even very low resolution input.
 
 Given that we only have 1000 simulations per modelspec, we'll also increase
 the number of training epochs.
@@ -322,7 +322,7 @@ convert each file into a genotype matrix, resize, sort the resized "haplotypes",
 and store the result into a Zarr cache. This process is done in parallel
 by default, which can be changed with the `-j` command. If you have a slow
 disk, then it might be quicker to run this with only 1 process. For fast disks,
-parallelism really helps. Your milage may vary. Once complete, you should
+parallelism really helps. Your mileage may vary. Once complete, you should
 see a `zarrcache_32-rows` folder in the working directory. If you decide to
 add more simulations at a later date, just delete this folder and regenerate
 the cache. You can also change the `num_rows` parameter and generate an
@@ -338,7 +338,7 @@ used in the name, e.g. `cnn_3029321311.hdf5`. By default, the `train`
 subcommand will let tensorflow decide whether to do training on the GPU(s)
 (if available), or CPUs. Tensorflow is greedy though, and will use all
 available GPUs. Tensorflow can be coaxed into using a specific GPU by setting
-the `CUDA_VISIBLE_DEVICES` enviroment variable to that GPU. If no GPUs are
+the `CUDA_VISIBLE_DEVICES` environment variable to that GPU. If no GPUs are
 found, tensorflow will use all available CPUs. If you'd like to use fewer CPUs
 for training, use the `-j` parameter when calling `genomatnn train`.
 
