@@ -19,10 +19,10 @@ MacOS may also work, but this only been minimally tested.
    cd genomatnn
    ```
 
-2. Create a new conda environment using the supplied enironment file.
+2. Create a new conda environment using one of the supplied environment files.
    Use `environment.yml` if you intend to do CPU-only training,
-   or the `environment-gpu.yml` file to use tensorflow-gpu.
-   ```
+   or `environment-gpu.yml` for GPU-base training.
+   ```sh
    conda env create -f environment.yml -n genomatnn
    # Activate the conda environment.
    conda activate genomatnn
