@@ -7,6 +7,9 @@ engine in [stdpopsim](https://stdpopsim.readthedocs.io/en/latest/introduction.ht
 The trained CNN can then be used to predict genomic windows of adaptive
 introgression from empirical datasets in the `vcf` or `bcf` formats.
 
+If you find this software useful, please cite:
+Gower et al. (2021), https://doi.org/10.7554/eLife.64669
+
 # Installation
 The most trouble-free way to use genomatnn is with a
 [conda](https://docs.conda.io/en/latest/miniconda.html) virtual environment.
@@ -366,6 +369,25 @@ This will output two files: `cnn_3029321311/predictions.txt` and
 `cnn_3029321311/predictions.pdf`. The former contains tab-separated regions
 and a probability for each region. The latter is a Manhattan plot of the
 results (this won't make sense for the example vcf file, sorry).
+
+
+### Using the pre-trained CNNs
+The `pre-trained/` folder contains trained CNNs, for which results were
+presented in [Gower et al. (2021)](https://doi.org/10.7554/eLife.64669).
+These models can be used to make predictions on new datasets following the
+instructions in the previous section. However, if you attempt to do this
+without first simulating any data, genomatnn will produce an error, e.g.
+```
+RuntimeError: zarrcache_256-rows doesn't exist
+```
+
+By default, genomatnn will try to calibrate the model predictions using the
+training simulations to fit the Beta calibrator. If the training simulations
+don't exist, an error will be raised. To disable calibration, add
+the following line to the toplevel of the configuration file.
+```
+calibration = "None"
+```
 
 
 # Troubleshooting
