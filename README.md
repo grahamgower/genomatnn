@@ -8,35 +8,22 @@ The trained CNN can then be used to predict genomic windows of adaptive
 introgression from empirical datasets in the `vcf` or `bcf` formats.
 
 # Installation
-The most trouble-free way to use genomatnn is from within a virtual environment,
-and the instructions below use [conda](https://docs.conda.io/en/latest/miniconda.html)
-to create such an environment. We assume you are using `Linux`. Other platforms
-may work, but these have not been tested.
+The most trouble-free way to use genomatnn is with a
+[conda](https://docs.conda.io/en/latest/miniconda.html) virtual environment.
+We assume you are using `Linux`.
+MacOS may also work, but this only been minimally tested.
 
-0. Install bcftools. Genomatnn uses the `bcftools` command line program to
-   read `vcf` and `bcf` files. The tests also use `bgzip`, which is packaged
-   with bcftools. Bcftools is most easily installed via your OS package manager,
-   or refer to the [htslib](http://www.htslib.org/) website for other
-   installation options.
-
-1. Install SLiM. Refer to the instructions on the
-   [SLiM website](https://messerlab.org/slim/), or in the manual, to install
-   the command line `slim` program. The SLiM GUI is not required.
-   After successful installation, running `slim -v` should produce output
-   similar to the following:
+1. Clone the genomatnn git repository.
    ```
-   SLiM version 3.4, built May 20 2020 16:00:54
+   git clone https://github.com/grahamgower/genomatnn.git
+   cd genomatnn
    ```
 
-2. Create a new conda environment. If you intend to do CPU-only training,
-   you can remove `cudnn` from the list. We choose the `mkl` variant
-   of blas, which uses the Intel math kernel and markedly improves the speed of
-   matrix operations on Intel CPUs. Installing numpy here (instead of with pip)
-   ensures numpy will also use the mkl blas. We pin numpy 1.19.x and python 3.8.x
-   because at the time of writing (Feb 2021), the latest tensorflow (2.4.1)
-   does not work with newer numpy nor python versions.
+2. Create a new conda environment using the supplied enironment file.
+   Use `environment.yml` if you intend to do CPU-only training,
+   or the `environment-gpu.yml` file to use tensorflow-gpu.
    ```
-   conda create -n genomatnn gsl cudnn "blas=*=mkl" numpy=1.19 python=3.8
+   conda env create -f environment.yml -n genomatnn
    # Activate the conda environment.
    conda activate genomatnn
    # If using an old version of conda, it may be neccessary to use a different
@@ -44,20 +31,8 @@ may work, but these have not been tested.
    #source activate genomatnn
    ```
 
-3. Install our `selection` stdpopsim branch. This branch will only be installed
-   in the active conda environment, and will not clash with any existing
-   stdpopsim installation. We are working to get this merged into stdpopsim
-   so that this step will no longer be necessary in the future.
+3. With the conda environment still activated, build/install genomatnn.
    ```
-   pip install git+https://github.com/grahamgower/stdpopsim.git@selection
-   ```
-
-4. With the conda environment still activated, clone the genomatnn git
-   repository, then build and install.
-   ```
-   git clone https://github.com/grahamgower/genomatnn.git
-   cd genomatnn
-   pip install -r requirements.txt
    python setup.py install
    ```
 
@@ -67,9 +42,8 @@ may work, but these have not been tested.
    nosetests -v tests
    ```
 
-We recognise that this installation process is not trivial. Please open a
-github issue if you have any trouble, or the tests fail. Be sure to include
-as much detail as possible.
+Please open a github issue if you have any trouble, or the tests fail.
+Be sure to include as much detail as possible.
 
 
 # Usage
@@ -169,7 +143,8 @@ counterintuitive, this means that to do any simulations, we must first
 describe which individuals will be used from the vcf(s), and how these
 relate to the populations that will be simulated.
 The configuration file uses the [toml](https://github.com/toml-lang/toml)
-format, and we provide an extensively commented [example configuration](examples/Nea_to_CEU.toml).
+format, and we provide an extensively commented
+[example configuration](examples/Nea_to_CEU.toml).
 
 
 ## Worked example
