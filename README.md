@@ -24,7 +24,7 @@ MacOS may also work, but this only been minimally tested.
 
 2. Create a new conda environment using one of the supplied environment files.
    Use `environment.yml` if you intend to do CPU-only training,
-   or `environment-gpu.yml` for GPU-base training.
+   or `environment-gpu.yml` for GPU-based training.
    ```sh
    conda env create -f environment.yml -n genomatnn
    # Activate the conda environment.
