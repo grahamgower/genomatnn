@@ -231,7 +231,7 @@ class Config:
                 self.calibration = cc
                 break
         else:
-            if cc != "None":
+            if calib_str != "None":
                 raise ConfigError(
                     f"{self.filename}: invalid calibration method {calib_str}"
                 )
