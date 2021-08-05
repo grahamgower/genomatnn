@@ -36,6 +36,7 @@ MacOS may also work, but this only been minimally tested.
 
 3. With the conda environment still activated, build/install genomatnn.
    ```
+   python setup.py build_ext -i
    python setup.py install
    ```
 
