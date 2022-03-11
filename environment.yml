@@ -10,6 +10,7 @@ dependencies:
   - tensorflow=2.4.1
   - msprime=0.7.4
   - pyslim=0.600
+  - tskit=0.3.7
   - pip=21.2.2
   - pip:
     - stdpopsim @ git+https://github.com/grahamgower/stdpopsim.git@selection
