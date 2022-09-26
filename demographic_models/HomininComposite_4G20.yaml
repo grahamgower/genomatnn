@@ -29,7 +29,7 @@ demes:
   epochs:
   - start_size: 27000.0
 pulses:
-- source: Nea
+- sources: [Nea]
   dest: CEU
   time: 1896.551724137931
-  proportion: 0.0225
+  proportions: [0.0225]
