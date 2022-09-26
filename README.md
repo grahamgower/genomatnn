@@ -10,6 +10,9 @@ introgression from empirical datasets in the `vcf` or `bcf` formats.
 If you find this software useful, please cite:
 Gower et al. (2021), https://doi.org/10.7554/eLife.64669
 
+Pre-trained models corresponding to the publication can be found in the
+`pre-trained/` folder, and their predictions are in the `predictions/` folder.
+
 # Installation
 The most trouble-free way to use genomatnn is with a
 [conda](https://docs.conda.io/en/latest/miniconda.html) virtual environment.
