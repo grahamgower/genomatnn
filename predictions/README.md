@@ -12,11 +12,11 @@ three different ways to correspond to Beta calibrators with Neutral:Sweep:AI
 class ratios of 1:1:1, 1:0.1:0.1, or 1:0.1:0.02.
 
 File | Scenario | AF threshold | class ratios
---- | --- | --- | --- | ---
+--- | --- | --- | ---
 `Den_to_Papuan_af-0.05_w-0.02.tsv` | Denisovan introgression | 5% | 1:0.1:0.02
 `Den_to_Papuan_af-0.05_w-0.1.tsv` | Denisovan introgression | 5% | 1:0.1:0.1
 `Den_to_Papuan_af-0.05_w-1.tsv` | Denisovan introgression | 5% | 1:1:1
-`Den_to_Papuan_af-0.25_w-0.02.tsv` | Denisovan introgression | 25% | 
+`Den_to_Papuan_af-0.25_w-0.02.tsv` | Denisovan introgression | 25% | 1:0.1:0.02
 `Den_to_Papuan_af-0.25_w-0.1.tsv` | Denisovan introgression | 25% | 1:0.1:0.1
 `Den_to_Papuan_af-0.25_w-1.tsv` | Denisovan introgression | 25% | 1:1:1
 `Nea_to_CEU_af-0.05_w-0.02.tsv` | Neanderthal introgression | 5% | 1:0.1:0.02
