@@ -281,7 +281,7 @@ overnight if you're running it on a workstation or laptop), so you definitely
 want as many cores as you can get. If you have multiple compute servers
 available, then you can run `genomatnn sim` independently on each system.
 
-The output of each simulation is tree sequence file, located under a folder
+The output of each simulation is a tree sequence file, located under a folder
 hierarchy which is named according to the modelspec being simulated. E.g.
 as we run the above `genomatnn sim` command, the
 `HomSap/HomininComposite_4G20/Neutral/slim` folder will be created, and

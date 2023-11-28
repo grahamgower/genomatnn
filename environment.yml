@@ -9,6 +9,7 @@ dependencies:
   - python=3.8
   - tensorflow=2.4.1
   - msprime=0.7.4
+  - numpy=1.19
   - pyslim=0.600
   - tskit=0.3.7
   - pip=21.2.2
